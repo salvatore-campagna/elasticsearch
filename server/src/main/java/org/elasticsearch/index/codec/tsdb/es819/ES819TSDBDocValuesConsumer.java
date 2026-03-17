@@ -14,7 +14,7 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
-import org.elasticsearch.index.codec.tsdb.NumericBlockWriter;
+import org.elasticsearch.index.codec.tsdb.NumericFieldWriter;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 
@@ -22,7 +22,7 @@ import java.io.IOException;
 
 /**
  * Doc values consumer for the ES819 TSDB format. Delegates all shared wire-format logic
- * to {@link AbstractTSDBDocValuesConsumer} and provides the ES819-specific numeric block
+ * to {@link AbstractTSDBDocValuesConsumer} and provides the ES819-specific numeric
  * encoding strategy via {@link TSDBDocValuesEncoder}.
  */
 final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
@@ -44,16 +44,21 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
     }
 
     @Override
-    protected NumericBlockWriter numericBlockWriter(FieldInfo field, long[] sample, int blockSize) {
-        TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(blockSize);
-        return new NumericBlockWriter() {
+    protected NumericFieldWriter createNumericFieldWriter(final FieldInfo field, int blockSize) {
+        final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(blockSize);
+        return new NumericFieldWriter() {
             @Override
-            public void write(long[] values, int bs, IndexOutput out) throws IOException {
+            public void writeHeader(final FieldInfo f, final IndexOutput meta) throws IOException {
+                meta.writeInt(formatConfig.directMonotonicBlockShift());
+            }
+
+            @Override
+            public void writeBlock(final long[] values, int blockSize, final IndexOutput out) throws IOException {
                 encoder.encode(values, out);
             }
 
             @Override
-            public void writeOrdinals(long[] values, IndexOutput out, int bitsPerOrd) throws IOException {
+            public void writeOrdinals(final long[] values, final IndexOutput out, int bitsPerOrd) throws IOException {
                 encoder.encodeOrdinals(values, out, bitsPerOrd);
             }
         };

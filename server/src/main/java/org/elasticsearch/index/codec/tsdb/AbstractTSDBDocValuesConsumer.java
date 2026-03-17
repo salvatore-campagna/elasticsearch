@@ -57,8 +57,8 @@ import static org.elasticsearch.index.codec.tsdb.DocValuesConsumerUtil.compatibl
 /**
  * Abstract base class for TSDB doc values consumers. Owns the shared wire-format logic
  * for writing numeric, binary, sorted, sorted-numeric, and sorted-set doc values.
- * Concrete subclasses provide the numeric block encoding strategy via
- * {@link #numericBlockWriter(FieldInfo, long[], int)}.
+ * Concrete subclasses provide the numeric encoding strategy via
+ * {@link #createNumericFieldWriter(FieldInfo, int)}.
  */
 public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
@@ -89,7 +89,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     final SegmentWriteState state;
 
     private final String metaCodecName;
-    final TSDBDocValuesFormatConfig formatConfig;
+    protected final TSDBDocValuesFormatConfig formatConfig;
     final long[] skipIndexJumpLengthPerLevel;
 
     /**
@@ -176,18 +176,18 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     }
 
     /**
-     * Creates a writer for numeric blocks.
+     * Creates a numeric field writer for the given field.
      *
-     * <p>Called lazily on the first full block, so the {@code sample} buffer contains real data
-     * that subclasses can use for codec selection.
+     * <p>Each codec version provides its own encoding strategy. The returned writer owns the
+     * full numeric encoding lifecycle for this field: header metadata, block encoding, and
+     * ordinal encoding.
      *
      * @param field     the field being encoded
-     * @param sample    the first full block of values, usable as sample data for codec selection
      * @param blockSize the resolved block size for this field
-     * @return a writer capable of encoding blocks for this field
-     * @see NumericBlockWriter
+     * @return a writer for this field
+     * @see NumericFieldWriter
      */
-    protected abstract NumericBlockWriter numericBlockWriter(FieldInfo field, long[] sample, int blockSize);
+    protected abstract NumericFieldWriter createNumericFieldWriter(FieldInfo field, int blockSize);
 
     /**
      * Returns the encoder used for doc offsets in compressed binary blocks.
@@ -297,14 +297,11 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                         1L + ((numValues - 1) >>> blockShift),
                         formatConfig.directMonotonicBlockShift()
                     );
-                    meta.writeInt(formatConfig.directMonotonicBlockShift());
+                    final NumericFieldWriter numericFieldWriter = createNumericFieldWriter(field, blockSize);
+                    numericFieldWriter.writeHeader(field, meta);
                     final long[] buffer = new long[blockSize];
                     int bufferSize = 0;
-                    NumericBlockWriter blockWriter = null;
                     final boolean useOrdinals = maxOrd >= 0;
-                    if (useOrdinals) {
-                        blockWriter = numericBlockWriter(field, buffer, blockSize);
-                    }
                     values = valuesSource.getSortedNumeric(field);
                     final int bitsPerOrd = useOrdinals ? PackedInts.bitsRequired(maxOrd - 1) : -1;
                     if (valuesSource.mergeStats.supported() && numDocsWithValue < maxDoc) {
@@ -323,12 +320,9 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                             if (bufferSize == blockSize) {
                                 indexWriter.add(data.getFilePointer() - valuesDataOffset);
                                 if (useOrdinals) {
-                                    blockWriter.writeOrdinals(buffer, data, bitsPerOrd);
+                                    numericFieldWriter.writeOrdinals(buffer, data, bitsPerOrd);
                                 } else {
-                                    if (blockWriter == null) {
-                                        blockWriter = numericBlockWriter(field, buffer, blockSize);
-                                    }
-                                    blockWriter.write(buffer, blockSize, data);
+                                    numericFieldWriter.writeBlock(buffer, blockSize, data);
                                 }
                                 bufferSize = 0;
                             }
@@ -338,12 +332,9 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                         indexWriter.add(data.getFilePointer() - valuesDataOffset);
                         Arrays.fill(buffer, bufferSize, blockSize, 0L);
                         if (useOrdinals) {
-                            blockWriter.writeOrdinals(buffer, data, bitsPerOrd);
+                            numericFieldWriter.writeOrdinals(buffer, data, bitsPerOrd);
                         } else {
-                            if (blockWriter == null) {
-                                blockWriter = numericBlockWriter(field, buffer, blockSize);
-                            }
-                            blockWriter.write(buffer, blockSize, data);
+                            numericFieldWriter.writeBlock(buffer, blockSize, data);
                         }
                     }
                 }

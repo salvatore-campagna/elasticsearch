@@ -9,36 +9,46 @@
 
 package org.elasticsearch.index.codec.tsdb;
 
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.store.IndexOutput;
 
 import java.io.IOException;
 
 /**
- * Encodes a block of numeric doc values into the data file during segment writing.
+ * Encodes numeric doc values for a single field during segment writing.
  *
- * <p>This is the write-side counterpart of {@link NumericBlockReader}. Each codec version
- * provides its own implementation. For example, ES819 delegates to
- * {@link TSDBDocValuesEncoder} (delta, offset, GCD, bit-pack).
+ * <p>Each codec version provides its own implementation via
+ * {@link AbstractTSDBDocValuesConsumer#createNumericFieldWriter}. A single instance
+ * is created per field and used for both header writing and block encoding:
+ * <ol>
+ *   <li>{@link #writeHeader}: once per field, writes codec-specific metadata</li>
+ *   <li>{@link #writeBlock}: per block, encodes numeric values</li>
+ *   <li>{@link #writeOrdinals}: per block, encodes ordinal values</li>
+ * </ol>
  *
- * <p>Instances are created lazily by {@link AbstractTSDBDocValuesConsumer#numericBlockWriter}
- * on the first full block of values. This allows codec implementations to inspect the actual data
- * before committing to a compression strategy.
- *
- * @see NumericBlockReader
+ * @see NumericFieldReader
  */
-public interface NumericBlockWriter {
+public interface NumericFieldWriter {
 
     /**
-     * Writes a block of numeric values to the data output.
+     * Writes codec-specific numeric field metadata.
+     *
+     * @param field the field being written
+     * @param meta  the metadata output stream
+     */
+    void writeHeader(FieldInfo field, IndexOutput meta) throws IOException;
+
+    /**
+     * Encodes a block of numeric values.
      *
      * @param values    the values to encode; only the first {@code blockSize} entries are valid
      * @param blockSize the number of valid values in the array
      * @param data      the output to write compressed bytes to
      */
-    void write(long[] values, int blockSize, IndexOutput data) throws IOException;
+    void writeBlock(long[] values, int blockSize, IndexOutput data) throws IOException;
 
     /**
-     * Writes a block of ordinal values using a fixed number of bits per ordinal.
+     * Encodes a block of ordinal values using a fixed number of bits per ordinal.
      *
      * @param values     the ordinal values to encode
      * @param data       the output to write compressed bytes to

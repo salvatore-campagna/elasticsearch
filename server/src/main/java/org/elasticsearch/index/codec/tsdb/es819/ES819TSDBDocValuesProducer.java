@@ -11,9 +11,11 @@ package org.elasticsearch.index.codec.tsdb.es819;
 
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.store.DataInput;
+import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.packed.DirectMonotonicReader;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
-import org.elasticsearch.index.codec.tsdb.NumericBlockReader;
+import org.elasticsearch.index.codec.tsdb.NumericFieldReader;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 
@@ -22,7 +24,7 @@ import java.io.IOException;
 /**
  * ES819 doc values producer. Delegates all shared wire-format reading logic to
  * {@link AbstractTSDBDocValuesProducer} and provides the ES819-specific numeric
- * block decoding strategy via {@link TSDBDocValuesEncoder}.
+ * decoding strategy via {@link TSDBDocValuesEncoder}.
  */
 final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
 
@@ -47,16 +49,22 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
     }
 
     @Override
-    protected NumericBlockReader createNumericBlockReader(NumericEntry entry) {
-        TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
-        return new NumericBlockReader() {
+    protected NumericFieldReader createNumericFieldReader(final NumericEntry entry, int numericBlockSize) {
+        final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
+        return new NumericFieldReader() {
             @Override
-            public void read(DataInput input, long[] values, int count) throws IOException {
+            public void readHeader(final IndexInput meta, final NumericEntry e, int numericBlockShift, int indexBlockShift)
+                throws IOException {
+                e.indexMeta = DirectMonotonicReader.loadMeta(meta, 1 + ((e.numValues - 1) >>> numericBlockShift), indexBlockShift);
+            }
+
+            @Override
+            public void readBlock(final DataInput input, final long[] values, int count) throws IOException {
                 encoder.decode(input, values);
             }
 
             @Override
-            public void readOrdinals(DataInput input, long[] values, int bitsPerOrd) throws IOException {
+            public void readOrdinals(final DataInput input, final long[] values, int bitsPerOrd) throws IOException {
                 encoder.decodeOrdinals(input, values, bitsPerOrd);
             }
         };
