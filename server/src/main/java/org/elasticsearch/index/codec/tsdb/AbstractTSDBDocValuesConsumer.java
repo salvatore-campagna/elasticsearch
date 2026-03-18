@@ -42,14 +42,12 @@ import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.compress.LZ4;
 import org.apache.lucene.util.packed.DirectMonotonicWriter;
-import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.core.IOUtils;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.elasticsearch.index.codec.tsdb.DocValuesConsumerUtil.compatibleWithOptimizedMerge;
@@ -58,7 +56,7 @@ import static org.elasticsearch.index.codec.tsdb.DocValuesConsumerUtil.compatibl
  * Abstract base class for TSDB doc values consumers. Owns the shared wire-format logic
  * for writing numeric, binary, sorted, sorted-numeric, and sorted-set doc values.
  * Concrete subclasses provide the numeric encoding strategy via
- * {@link #createNumericFieldWriter(FieldInfo, int)}.
+ * {@link #createNumericFieldWriter(NumericWriteContext)}.
  */
 public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
@@ -180,18 +178,17 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     }
 
     /**
-     * Creates a numeric field writer for the given field.
+     * Creates a numeric field writer for this segment.
      *
      * <p>Each codec version provides its own encoding strategy. The returned writer owns the
-     * full numeric encoding lifecycle for this field: header metadata, block encoding, and
-     * ordinal encoding.
+     * full numeric field lifecycle: stats, ordinal detection, codec-specific metadata,
+     * block encoding, offsets, and DISI.
      *
-     * @param field     the field being encoded
-     * @param blockSize the resolved block size for this field
-     * @return a writer for this field
+     * @param ctx the shared write context for this segment
+     * @return a writer for numeric fields
      * @see NumericFieldWriter
      */
-    protected abstract NumericFieldWriter createNumericFieldWriter(FieldInfo field, int blockSize);
+    protected abstract NumericFieldWriter createNumericFieldWriter(NumericWriteContext ctx);
 
     @Override
     public void addNumericField(final FieldInfo field, final DocValuesProducer valuesProducer) throws IOException {
@@ -210,13 +207,6 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         writeField(field, producer, -1, null, numericBlockSize);
     }
 
-    private boolean shouldEncodeOrdinalRange(final FieldInfo field, long maxOrd, int numDocsWithValue, long numValues) {
-        return maxDoc > 1
-            && field.number == primarySortFieldNumber
-            && numDocsWithValue == numValues
-            && (numDocsWithValue / maxOrd) >= formatConfig.minDocsPerOrdinalForRangeEncoding();
-    }
-
     private long[] writeField(
         final FieldInfo field,
         final DocValuesSource valuesSource,
@@ -224,160 +214,18 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final OffsetsAccumulator offsetsAccumulator,
         int blockSize
     ) throws IOException {
-        final int blockShift = Integer.numberOfTrailingZeros(blockSize);
-        int numDocsWithValue = 0;
-        long numValues = 0;
-
-        // NOTE: the merge path and the indexing path use different strategies for computing stats and writing DISI.
-        // The merge path has pre-computed stats and uses DISIAccumulator (single-pass); the indexing path computes
-        // stats by iterating and writes DISI via IndexedDISI.writeBitSet (separate pass). Unifying these paths
-        // would require making stats always available upfront and reconciling the DISI strategies.
-        SortedNumericDocValues values;
-        if (valuesSource.mergeStats.supported()) {
-            numDocsWithValue = valuesSource.mergeStats.sumNumDocsWithField();
-            numValues = valuesSource.mergeStats.sumNumValues();
-        } else {
-            values = valuesSource.getSortedNumeric(field);
-            for (int doc = values.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = values.nextDoc()) {
-                numDocsWithValue++;
-                final int count = values.docValueCount();
-                numValues += count;
-            }
-        }
-
-        meta.writeLong(numValues);
-        meta.writeInt(numDocsWithValue);
-
-        DISIAccumulator disiAccumulator = null;
-        try {
-            if (numValues > 0) {
-                assert numDocsWithValue > 0;
-                final ByteBuffersDataOutput indexOut = new ByteBuffersDataOutput();
-                DirectMonotonicWriter indexWriter = null;
-
-                final long valuesDataOffset = data.getFilePointer();
-                if (maxOrd == 1) {
-                    meta.writeInt(INDEX_SINGLE_ORDINAL);
-                } else if (shouldEncodeOrdinalRange(field, maxOrd, numDocsWithValue, numValues)) {
-                    assert offsetsAccumulator == null;
-                    meta.writeInt(INDEX_ORDINAL_RANGE);
-                    meta.writeVInt(Math.toIntExact(maxOrd));
-                    meta.writeByte((byte) formatConfig.ordinalRangeBlockShift());
-                    values = valuesSource.getSortedNumeric(field);
-                    if (valuesSource.mergeStats.supported() && numDocsWithValue < maxDoc) {
-                        disiAccumulator = new DISIAccumulator(dir, context, data, IndexedDISI.DEFAULT_DENSE_RANK_POWER);
-                    }
-                    DirectMonotonicWriter startDocs = DirectMonotonicWriter.getInstance(
-                        meta,
-                        data,
-                        maxOrd + 1,
-                        formatConfig.ordinalRangeBlockShift()
-                    );
-                    long lastOrd = 0;
-                    startDocs.add(0);
-                    for (int doc = values.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = values.nextDoc()) {
-                        if (disiAccumulator != null) {
-                            disiAccumulator.addDocId(doc);
-                        }
-                        final long nextOrd = values.nextValue();
-                        if (nextOrd != lastOrd) {
-                            lastOrd = nextOrd;
-                            startDocs.add(doc);
-                        }
-                    }
-                    startDocs.add(maxDoc);
-                    startDocs.finish();
-                } else {
-                    indexWriter = DirectMonotonicWriter.getInstance(
-                        meta,
-                        new ByteBuffersIndexOutput(indexOut, "temp-dv-index", "temp-dv-index"),
-                        1L + ((numValues - 1) >>> blockShift),
-                        formatConfig.directMonotonicBlockShift()
-                    );
-                    final NumericFieldWriter numericFieldWriter = createNumericFieldWriter(field, blockSize);
-                    numericFieldWriter.writeHeader(field, meta);
-                    final long[] buffer = new long[blockSize];
-                    int bufferSize = 0;
-                    final boolean useOrdinals = maxOrd >= 0;
-                    values = valuesSource.getSortedNumeric(field);
-                    final int bitsPerOrd = useOrdinals ? PackedInts.bitsRequired(maxOrd - 1) : -1;
-                    if (valuesSource.mergeStats.supported() && numDocsWithValue < maxDoc) {
-                        disiAccumulator = new DISIAccumulator(dir, context, data, IndexedDISI.DEFAULT_DENSE_RANK_POWER);
-                    }
-                    for (int doc = values.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = values.nextDoc()) {
-                        if (disiAccumulator != null) {
-                            disiAccumulator.addDocId(doc);
-                        }
-                        final int count = values.docValueCount();
-                        if (offsetsAccumulator != null) {
-                            offsetsAccumulator.addDoc(count);
-                        }
-                        for (int i = 0; i < count; ++i) {
-                            buffer[bufferSize++] = values.nextValue();
-                            if (bufferSize == blockSize) {
-                                indexWriter.add(data.getFilePointer() - valuesDataOffset);
-                                if (useOrdinals) {
-                                    numericFieldWriter.writeOrdinals(buffer, data, bitsPerOrd);
-                                } else {
-                                    numericFieldWriter.writeBlock(buffer, blockSize, data);
-                                }
-                                bufferSize = 0;
-                            }
-                        }
-                    }
-                    if (bufferSize > 0) {
-                        indexWriter.add(data.getFilePointer() - valuesDataOffset);
-                        Arrays.fill(buffer, bufferSize, blockSize, 0L);
-                        if (useOrdinals) {
-                            numericFieldWriter.writeOrdinals(buffer, data, bitsPerOrd);
-                        } else {
-                            numericFieldWriter.writeBlock(buffer, blockSize, data);
-                        }
-                    }
-                }
-
-                final long valuesDataLength = data.getFilePointer() - valuesDataOffset;
-                if (indexWriter != null) {
-                    indexWriter.finish();
-                }
-                final long indexDataOffset = data.getFilePointer();
-                data.copyBytes(indexOut.toDataInput(), indexOut.size());
-                meta.writeLong(indexDataOffset);
-                meta.writeLong(data.getFilePointer() - indexDataOffset);
-
-                meta.writeLong(valuesDataOffset);
-                meta.writeLong(valuesDataLength);
-            }
-
-            if (numDocsWithValue == 0) {
-                meta.writeLong(-2); // docsWithFieldOffset
-                meta.writeLong(0L); // docsWithFieldLength
-                meta.writeShort((short) -1); // jumpTableEntryCount
-                meta.writeByte((byte) -1); // denseRankPower
-            } else if (numDocsWithValue == maxDoc) {
-                meta.writeLong(-1); // docsWithFieldOffset
-                meta.writeLong(0L); // docsWithFieldLength
-                meta.writeShort((short) -1); // jumpTableEntryCount
-                meta.writeByte((byte) -1); // denseRankPower
-            } else {
-                long offset = data.getFilePointer();
-                meta.writeLong(offset); // docsWithFieldOffset
-                final short jumpTableEntryCount;
-                if (maxOrd != 1 && disiAccumulator != null) {
-                    jumpTableEntryCount = disiAccumulator.build(data);
-                } else {
-                    values = valuesSource.getSortedNumeric(field);
-                    jumpTableEntryCount = IndexedDISI.writeBitSet(values, data, IndexedDISI.DEFAULT_DENSE_RANK_POWER);
-                }
-                meta.writeLong(data.getFilePointer() - offset); // docsWithFieldLength
-                meta.writeShort(jumpTableEntryCount);
-                meta.writeByte(IndexedDISI.DEFAULT_DENSE_RANK_POWER);
-            }
-        } finally {
-            IOUtils.close(disiAccumulator);
-        }
-
-        return new long[] { numDocsWithValue, numValues };
+        final NumericWriteContext ctx = new NumericWriteContext(
+            meta,
+            data,
+            dir,
+            context,
+            maxDoc,
+            blockSize,
+            primarySortFieldNumber,
+            formatConfig
+        );
+        final NumericFieldWriter numericFieldWriter = createNumericFieldWriter(ctx);
+        return numericFieldWriter.write(field, valuesSource, maxOrd, offsetsAccumulator);
     }
 
     @Override

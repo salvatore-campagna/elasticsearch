@@ -18,10 +18,11 @@ import java.io.IOException;
  * Reads and decodes numeric doc values for a single field during segment reading.
  *
  * <p>Each codec version provides its own implementation via
- * {@link AbstractTSDBDocValuesProducer#createNumericFieldReader}. A single instance
- * is created per field and used for both header reading and block decoding:
+ * {@link AbstractTSDBDocValuesProducer#createNumericFieldReader}. The lifecycle is:
  * <ol>
- *   <li>{@link #readHeader}: once per field during segment open, reads codec-specific metadata</li>
+ *   <li>{@link #read}: once per field during segment open, reads the full numeric
+ *       entry metadata including value counts, ordinal detection, codec-specific header,
+ *       offsets, and DISI metadata</li>
  *   <li>{@link #readBlock}: per block during iteration, decodes numeric values</li>
  *   <li>{@link #readOrdinals}: per block during iteration, decodes ordinal values</li>
  * </ol>
@@ -31,15 +32,13 @@ import java.io.IOException;
 public interface NumericFieldReader {
 
     /**
-     * Reads codec-specific numeric field metadata.
+     * Reads the full numeric field: entry metadata, ordinal detection, and DISI.
      *
      * @param meta              the metadata input stream
-     * @param entry             the numeric entry to populate with index metadata
+     * @param entry             the numeric entry to populate
      * @param numericBlockShift the block shift for numeric encoding
-     * @param indexBlockShift   the block shift for the direct monotonic index
      */
-    void readHeader(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift, int indexBlockShift)
-        throws IOException;
+    void read(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
 
     /**
      * Decodes a block of numeric values.

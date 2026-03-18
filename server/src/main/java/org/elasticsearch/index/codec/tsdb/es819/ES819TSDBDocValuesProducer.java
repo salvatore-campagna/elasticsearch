@@ -13,6 +13,7 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.packed.DirectMonotonicReader;
+import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
 import org.elasticsearch.index.codec.tsdb.NumericFieldReader;
@@ -49,9 +50,29 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
         final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
         return new NumericFieldReader() {
             @Override
-            public void readHeader(final IndexInput meta, final NumericEntry e, int numericBlockShift, int indexBlockShift)
-                throws IOException {
-                e.indexMeta = DirectMonotonicReader.loadMeta(meta, 1 + ((e.numValues - 1) >>> numericBlockShift), indexBlockShift);
+            public void read(final IndexInput meta, final NumericEntry e, int numericBlockShift) throws IOException {
+                e.numValues = meta.readLong();
+                e.numDocsWithField = meta.readInt();
+                if (e.numValues > 0) {
+                    final int indexBlockShift = meta.readInt();
+                    if (indexBlockShift == AbstractTSDBDocValuesConsumer.INDEX_SINGLE_ORDINAL) {
+                        // single ordinal, no block index
+                    } else if (indexBlockShift == AbstractTSDBDocValuesConsumer.INDEX_ORDINAL_RANGE) {
+                        final int numOrds = meta.readVInt();
+                        final int blockShift = meta.readByte();
+                        e.sortedOrdinals = DirectMonotonicReader.loadMeta(meta, numOrds + 1, blockShift);
+                    } else {
+                        e.indexMeta = DirectMonotonicReader.loadMeta(meta, 1 + ((e.numValues - 1) >>> numericBlockShift), indexBlockShift);
+                    }
+                    e.indexOffset = meta.readLong();
+                    e.indexLength = meta.readLong();
+                    e.valuesOffset = meta.readLong();
+                    e.valuesLength = meta.readLong();
+                }
+                e.docsWithFieldOffset = meta.readLong();
+                e.docsWithFieldLength = meta.readLong();
+                e.jumpTableEntryCount = meta.readShort();
+                e.denseRankPower = meta.readByte();
             }
 
             @Override

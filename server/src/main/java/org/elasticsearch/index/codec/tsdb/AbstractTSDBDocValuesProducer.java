@@ -192,7 +192,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
      *
      * <p>Each codec version provides its own decoding strategy. The returned reader owns the
      * full numeric decoding lifecycle for this field: header metadata reading, block decoding,
-     * and ordinal decoding. The same instance is used for both {@link NumericFieldReader#readHeader}
+     * and ordinal decoding. The same instance is used for both {@link NumericFieldReader#read}
      * during segment init and {@link NumericFieldReader#readBlock}/{@link NumericFieldReader#readOrdinals}
      * during iteration.
      *
@@ -1852,7 +1852,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     }
 
     private NumericEntry readNumeric(IndexInput meta, int numericBlockShift) throws IOException {
-        NumericEntry entry = new NumericEntry();
+        final NumericEntry entry = new NumericEntry();
         readNumeric(meta, entry, numericBlockShift);
         return entry;
     }
@@ -1869,30 +1869,8 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     }
 
     private void readNumeric(IndexInput meta, NumericEntry entry, int numericBlockShift) throws IOException {
-        entry.numValues = meta.readLong();
-        entry.numDocsWithField = meta.readInt();
-        if (entry.numValues > 0) {
-            final int indexBlockShift = meta.readInt();
-            if (indexBlockShift == AbstractTSDBDocValuesConsumer.INDEX_SINGLE_ORDINAL) {
-                // single ordinal, no block index
-            } else if (indexBlockShift == AbstractTSDBDocValuesConsumer.INDEX_ORDINAL_RANGE) {
-                // encoded ordinal range, no block index
-                final int numOrds = meta.readVInt();
-                final int blockShift = meta.readByte();
-                entry.sortedOrdinals = DirectMonotonicReader.loadMeta(meta, numOrds + 1, blockShift);
-            } else {
-                final NumericFieldReader fieldReader = createNumericFieldReader(entry, 1 << numericBlockShift);
-                fieldReader.readHeader(meta, entry, numericBlockShift, indexBlockShift);
-            }
-            entry.indexOffset = meta.readLong();
-            entry.indexLength = meta.readLong();
-            entry.valuesOffset = meta.readLong();
-            entry.valuesLength = meta.readLong();
-        }
-        entry.docsWithFieldOffset = meta.readLong();
-        entry.docsWithFieldLength = meta.readLong();
-        entry.jumpTableEntryCount = meta.readShort();
-        entry.denseRankPower = meta.readByte();
+        final NumericFieldReader fieldReader = createNumericFieldReader(entry, 1 << numericBlockShift);
+        fieldReader.read(meta, entry, numericBlockShift);
     }
 
     private BinaryEntry readBinary(IndexInput meta, int version) throws IOException {
@@ -1944,7 +1922,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     }
 
     private SortedNumericEntry readSortedNumeric(IndexInput meta, int numericBlockShift) throws IOException {
-        SortedNumericEntry entry = new SortedNumericEntry();
+        final SortedNumericEntry entry = new SortedNumericEntry();
         readSortedNumeric(meta, entry, numericBlockShift);
         return entry;
     }
@@ -2579,18 +2557,18 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     private record DocValuesSkipperEntry(long offset, long length, long minValue, long maxValue, int docCount, int maxDocId) {}
 
     public static class NumericEntry {
-        long docsWithFieldOffset;
-        long docsWithFieldLength;
-        short jumpTableEntryCount;
-        byte denseRankPower;
+        public long docsWithFieldOffset;
+        public long docsWithFieldLength;
+        public short jumpTableEntryCount;
+        public byte denseRankPower;
         public long numValues;
-        int numDocsWithField;
-        long indexOffset;
-        long indexLength;
+        public int numDocsWithField;
+        public long indexOffset;
+        public long indexLength;
         public DirectMonotonicReader.Meta indexMeta;
-        long valuesOffset;
-        long valuesLength;
-        DirectMonotonicReader.Meta sortedOrdinals;
+        public long valuesOffset;
+        public long valuesLength;
+        public DirectMonotonicReader.Meta sortedOrdinals;
     }
 
     static class BinaryEntry {
@@ -2620,10 +2598,10 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
         }
     }
 
-    static class SortedNumericEntry extends NumericEntry {
-        DirectMonotonicReader.Meta addressesMeta;
-        long addressesOffset;
-        long addressesLength;
+    public static class SortedNumericEntry extends NumericEntry {
+        public DirectMonotonicReader.Meta addressesMeta;
+        public long addressesOffset;
+        public long addressesLength;
     }
 
     static class SortedEntry {

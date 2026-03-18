@@ -15,13 +15,14 @@ import org.apache.lucene.store.IndexOutput;
 import java.io.IOException;
 
 /**
- * Encodes numeric doc values for a single field during segment writing.
+ * Writes numeric doc values for a single field during segment writing.
  *
  * <p>Each codec version provides its own implementation via
- * {@link AbstractTSDBDocValuesConsumer#createNumericFieldWriter}. A single instance
- * is created per field and used for both header writing and block encoding:
+ * {@link AbstractTSDBDocValuesConsumer#createNumericFieldWriter}. The lifecycle is:
  * <ol>
- *   <li>{@link #writeHeader}: once per field, writes codec-specific metadata</li>
+ *   <li>{@link #write}: once per field, writes the full numeric field including
+ *       stats, ordinal detection, codec-specific metadata, block data, offsets, and DISI.
+ *       Calls {@link #writeBlock} and {@link #writeOrdinals} for each block.</li>
  *   <li>{@link #writeBlock}: per block, encodes numeric values</li>
  *   <li>{@link #writeOrdinals}: per block, encodes ordinal values</li>
  * </ol>
@@ -31,12 +32,15 @@ import java.io.IOException;
 public interface NumericFieldWriter {
 
     /**
-     * Writes codec-specific numeric field metadata.
+     * Writes the full numeric field: entry metadata, block data, and DISI.
      *
-     * @param field the field being written
-     * @param meta  the metadata output stream
+     * @param field               the field being written
+     * @param valuesSource        the source of doc values
+     * @param maxOrd              the maximum ordinal value, or -1 if not using ordinals
+     * @param offsetsAccumulator  accumulator for sorted-numeric offsets, or null
+     * @return array of [numDocsWithValue, numValues]
      */
-    void writeHeader(FieldInfo field, IndexOutput meta) throws IOException;
+    long[] write(FieldInfo field, DocValuesSource valuesSource, long maxOrd, OffsetsAccumulator offsetsAccumulator) throws IOException;
 
     /**
      * Encodes a block of numeric values.
