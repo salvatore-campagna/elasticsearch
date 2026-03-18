@@ -27,20 +27,17 @@ import java.io.IOException;
  */
 final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
 
-    private final DocOffsetsCodec.Encoder docOffsetsEncoder;
-
     ES819TSDBDocValuesConsumer(
-        DocOffsetsCodec.Encoder docOffsetsEncoder,
-        SegmentWriteState state,
+        final SegmentWriteState state,
         boolean enableOptimizedMerge,
-        String dataCodec,
-        String dataExtension,
-        String metaCodec,
-        String metaExtension,
-        TSDBDocValuesFormatConfig formatConfig
+        final String dataCodec,
+        final String dataExtension,
+        final String metaCodec,
+        final String metaExtension,
+        final TSDBDocValuesFormatConfig formatConfig,
+        final DocOffsetsCodec.Encoder docOffsetsEncoder
     ) throws IOException {
-        super(state, enableOptimizedMerge, dataCodec, dataExtension, metaCodec, metaExtension, formatConfig);
-        this.docOffsetsEncoder = docOffsetsEncoder;
+        super(state, enableOptimizedMerge, dataCodec, dataExtension, metaCodec, metaExtension, formatConfig, docOffsetsEncoder);
     }
 
     @Override
@@ -64,8 +61,4 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
         };
     }
 
-    @Override
-    protected DocOffsetsCodec.Encoder docOffsetsEncoder() {
-        return docOffsetsEncoder;
-    }
 }

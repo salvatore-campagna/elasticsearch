@@ -276,14 +276,14 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
     @Override
     public DocValuesConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
         return new ES819TSDBDocValuesConsumer(
-            docOffsetsCodec.getEncoder(),
             state,
             enableOptimizedMerge,
             DATA_CODEC,
             DATA_EXTENSION,
             META_CODEC,
             META_EXTENSION,
-            formatConfig
+            formatConfig,
+            docOffsetsCodec.getEncoder()
         );
     }
 
@@ -295,8 +295,8 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
             DATA_EXTENSION,
             META_CODEC,
             META_EXTENSION,
-            docOffsetsCodec.getDecoder(),
-            formatConfig
+            formatConfig,
+            docOffsetsCodec.getDecoder()
         );
     }
 }

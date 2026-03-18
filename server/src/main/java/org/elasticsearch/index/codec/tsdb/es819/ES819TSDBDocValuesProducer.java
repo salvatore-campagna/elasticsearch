@@ -28,24 +28,20 @@ import java.io.IOException;
  */
 final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
 
-    private final DocOffsetsCodec.Decoder docOffsetsDecoder;
-
     ES819TSDBDocValuesProducer(
-        SegmentReadState state,
-        String dataCodec,
-        String dataExtension,
-        String metaCodec,
-        String metaExtension,
-        DocOffsetsCodec.Decoder docOffsetsDecoder,
-        TSDBDocValuesFormatConfig formatConfig
+        final SegmentReadState state,
+        final String dataCodec,
+        final String dataExtension,
+        final String metaCodec,
+        final String metaExtension,
+        final TSDBDocValuesFormatConfig formatConfig,
+        final DocOffsetsCodec.Decoder docOffsetsDecoder
     ) throws IOException {
-        super(state, dataCodec, dataExtension, metaCodec, metaExtension, formatConfig);
-        this.docOffsetsDecoder = docOffsetsDecoder;
+        super(state, dataCodec, dataExtension, metaCodec, metaExtension, formatConfig, docOffsetsDecoder);
     }
 
-    private ES819TSDBDocValuesProducer(ES819TSDBDocValuesProducer original) {
+    private ES819TSDBDocValuesProducer(final ES819TSDBDocValuesProducer original) {
         super(original);
-        this.docOffsetsDecoder = original.docOffsetsDecoder;
     }
 
     @Override
@@ -73,10 +69,5 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
     @Override
     protected AbstractTSDBDocValuesProducer createMergeInstance() {
         return new ES819TSDBDocValuesProducer(this);
-    }
-
-    @Override
-    protected DocOffsetsCodec.Decoder docOffsetsDecoder() {
-        return docOffsetsDecoder;
     }
 }

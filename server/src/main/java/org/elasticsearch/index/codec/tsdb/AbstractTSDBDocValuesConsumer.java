@@ -91,6 +91,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     private final String metaCodecName;
     protected final TSDBDocValuesFormatConfig formatConfig;
     final long[] skipIndexJumpLengthPerLevel;
+    private final DocOffsetsCodec.Encoder docOffsetsEncoder;
 
     /**
      * Construct a new consumer that writes doc values in the TSDB wire format.
@@ -102,6 +103,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
      * @param metaCodec          codec name for the meta file header
      * @param metaExtension      file extension for the meta file
      * @param formatConfig       format-specific configuration for this codec version
+     * @param docOffsetsEncoder  encoder for doc offsets in compressed binary blocks
      */
     @SuppressWarnings("this-escape")
     protected AbstractTSDBDocValuesConsumer(
@@ -111,9 +113,11 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final String dataExtension,
         final String metaCodec,
         final String metaExtension,
-        final TSDBDocValuesFormatConfig formatConfig
+        final TSDBDocValuesFormatConfig formatConfig,
+        final DocOffsetsCodec.Encoder docOffsetsEncoder
     ) throws IOException {
         this.state = state;
+        this.docOffsetsEncoder = docOffsetsEncoder;
         this.termsDictBuffer = new byte[1 << 14];
         this.dir = state.directory;
         this.primarySortFieldNumber = AbstractTSDBDocValuesProducer.primarySortFieldNumber(state.segmentInfo, state.fieldInfos);
@@ -188,13 +192,6 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
      * @see NumericFieldWriter
      */
     protected abstract NumericFieldWriter createNumericFieldWriter(FieldInfo field, int blockSize);
-
-    /**
-     * Returns the encoder used for doc offsets in compressed binary blocks.
-     *
-     * @return the doc offsets encoder
-     */
-    protected abstract DocOffsetsCodec.Encoder docOffsetsEncoder();
 
     @Override
     public void addNumericField(final FieldInfo field, final DocValuesProducer valuesProducer) throws IOException {
@@ -658,7 +655,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             maxUncompressedBlockLength = Math.max(maxUncompressedBlockLength, uncompressedBlockLength);
             maxNumDocsInAnyBlock = Math.max(maxNumDocsInAnyBlock, numDocsInCurrentBlock);
 
-            docOffsetsEncoder().encode(docOffsets, numDocsInCurrentBlock, data);
+            docOffsetsEncoder.encode(docOffsets, numDocsInCurrentBlock, data);
 
             if (shouldCompress) {
                 compress(block, uncompressedBlockLength, data);

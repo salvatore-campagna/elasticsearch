@@ -77,16 +77,19 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     private final long[] skipIndexJumpLengthPerLevel;
     private static final int DEFAULT_NUMERIC_BLOCK_SHIFT = 7;
     private final TSDBDocValuesFormatConfig formatConfig;
+    private final DocOffsetsCodec.Decoder docOffsetsDecoder;
 
     @SuppressWarnings("this-escape")
     protected AbstractTSDBDocValuesProducer(
-        SegmentReadState state,
-        String dataCodec,
-        String dataExtension,
-        String metaCodec,
-        String metaExtension,
-        TSDBDocValuesFormatConfig formatConfig
+        final SegmentReadState state,
+        final String dataCodec,
+        final String dataExtension,
+        final String metaCodec,
+        final String metaExtension,
+        final TSDBDocValuesFormatConfig formatConfig,
+        final DocOffsetsCodec.Decoder docOffsetsDecoder
     ) throws IOException {
+        this.docOffsetsDecoder = docOffsetsDecoder;
         this.numerics = new IntObjectHashMap<>();
         this.binaries = new IntObjectHashMap<>();
         this.sorted = new IntObjectHashMap<>();
@@ -164,7 +167,8 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
         }
     }
 
-    protected AbstractTSDBDocValuesProducer(AbstractTSDBDocValuesProducer original) {
+    protected AbstractTSDBDocValuesProducer(final AbstractTSDBDocValuesProducer original) {
+        this.docOffsetsDecoder = original.docOffsetsDecoder;
         this.numerics = original.numerics;
         this.binaries = original.binaries;
         this.sorted = original.sorted;
@@ -208,13 +212,6 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
      * @return a merge-safe copy of this producer
      */
     protected abstract AbstractTSDBDocValuesProducer createMergeInstance();
-
-    /**
-     * Returns the decoder used for doc offsets in compressed binary blocks.
-     *
-     * @return the doc offsets decoder
-     */
-    protected abstract DocOffsetsCodec.Decoder docOffsetsDecoder();
 
     @Override
     public DocValuesProducer getMergeInstance() {
@@ -448,7 +445,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     }
 
     private BinaryDocValues getCompressedBinary(BinaryEntry entry) throws IOException {
-        final DocOffsetsCodec.Decoder docOffsetsDecoder = docOffsetsDecoder();
+        final DocOffsetsCodec.Decoder offsetsDecoder = this.docOffsetsDecoder;
         if (entry.docsWithFieldOffset == -1) {
             // dense
             final RandomAccessInput addressesData = this.data.randomAccessSlice(entry.addressesOffset, entry.addressesLength);
@@ -464,7 +461,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                     data.clone(),
                     entry.maxUncompressedChunkSize,
                     entry.maxNumDocsInAnyBlock,
-                    docOffsetsDecoder
+                    offsetsDecoder
                 );
 
                 @Override
@@ -548,7 +545,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                     data.clone(),
                     entry.maxUncompressedChunkSize,
                     entry.maxNumDocsInAnyBlock,
-                    docOffsetsDecoder
+                    offsetsDecoder
                 );
 
                 @Override
