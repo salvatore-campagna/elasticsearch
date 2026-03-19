@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Abstract base class that provides merge methods accepting pre-computed {@link DocValuesSource}
+ * Abstract base class that provides merge methods accepting pre-computed {@link TsdbDocValuesProducer}
  * instances, allowing subclasses to perform optimized merge.
  */
 public abstract class XDocValuesConsumer extends DocValuesConsumer {
@@ -34,7 +34,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
     /**
      * Merges the numeric doc values from {@link MergeState}.
      *
-     * <p>The default implementation calls {@link #addNumericField}, passing a {@link DocValuesSource}
+     * <p>The default implementation calls {@link #addNumericField}, passing a {@link TsdbDocValuesProducer}
      * that merges and filters deleted documents on the fly.
      *
      * @param mergeStats     pre-computed merge stats for the field
@@ -44,7 +44,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
      */
     public void mergeNumericField(final MergeStats mergeStats, final FieldInfo mergeFieldInfo, final MergeState mergeState)
         throws IOException {
-        addNumericField(mergeFieldInfo, new DocValuesSource(mergeStats) {
+        addNumericField(mergeFieldInfo, new TsdbDocValuesProducer(mergeStats) {
             @Override
             public NumericDocValues getNumeric(final FieldInfo fieldInfo) throws IOException {
                 if (fieldInfo != mergeFieldInfo) {
@@ -58,7 +58,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
     /**
      * Merges the binary doc values from {@link MergeState}.
      *
-     * <p>The default implementation calls {@link #addBinaryField}, passing a {@link DocValuesSource}
+     * <p>The default implementation calls {@link #addBinaryField}, passing a {@link TsdbDocValuesProducer}
      * that merges and filters deleted documents on the fly.
      *
      * @param mergeStats     pre-computed merge stats for the field
@@ -68,7 +68,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
      */
     public void mergeBinaryField(final MergeStats mergeStats, final FieldInfo mergeFieldInfo, final MergeState mergeState)
         throws IOException {
-        addBinaryField(mergeFieldInfo, new DocValuesSource(mergeStats) {
+        addBinaryField(mergeFieldInfo, new TsdbDocValuesProducer(mergeStats) {
             @Override
             public BinaryDocValues getBinary(final FieldInfo fieldInfo) throws IOException {
                 if (fieldInfo != mergeFieldInfo) {
@@ -82,7 +82,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
     /**
      * Merges the sorted numeric doc values from {@link MergeState}.
      *
-     * <p>The default implementation calls {@link #addSortedNumericField}, passing a {@link DocValuesSource}
+     * <p>The default implementation calls {@link #addSortedNumericField}, passing a {@link TsdbDocValuesProducer}
      * that merges and filters deleted documents on the fly.
      *
      * @param mergeStats     pre-computed merge stats for the field
@@ -92,7 +92,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
      */
     public void mergeSortedNumericField(final MergeStats mergeStats, final FieldInfo mergeFieldInfo, final MergeState mergeState)
         throws IOException {
-        addSortedNumericField(mergeFieldInfo, new DocValuesSource(mergeStats) {
+        addSortedNumericField(mergeFieldInfo, new TsdbDocValuesProducer(mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo fieldInfo) throws IOException {
                 if (fieldInfo != mergeFieldInfo) {
@@ -106,7 +106,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
     /**
      * Merges the sorted doc values from {@link MergeState}.
      *
-     * <p>The default implementation calls {@link #addSortedField}, passing a {@link DocValuesSource}
+     * <p>The default implementation calls {@link #addSortedField}, passing a {@link TsdbDocValuesProducer}
      * that merges ordinals and values and filters deleted documents on the fly.
      *
      * @param mergeStats pre-computed merge stats for the field
@@ -116,7 +116,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
      */
     public void mergeSortedField(final MergeStats mergeStats, final FieldInfo fieldInfo, final MergeState mergeState) throws IOException {
         final OrdinalMap map = createOrdinalMapForSortedDV(fieldInfo, mergeState);
-        addSortedField(fieldInfo, new DocValuesSource(mergeStats) {
+        addSortedField(fieldInfo, new TsdbDocValuesProducer(mergeStats) {
             @Override
             public SortedDocValues getSorted(final FieldInfo fieldInfoIn) throws IOException {
                 if (fieldInfoIn != fieldInfo) {
@@ -130,7 +130,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
     /**
      * Merges the sorted set doc values from {@link MergeState}.
      *
-     * <p>The default implementation calls {@link #addSortedSetField}, passing a {@link DocValuesSource}
+     * <p>The default implementation calls {@link #addSortedSetField}, passing a {@link TsdbDocValuesProducer}
      * that merges ordinals and values and filters deleted documents on the fly.
      *
      * @param mergeStats     pre-computed merge stats for the field
@@ -142,7 +142,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
         throws IOException {
         List<SortedSetDocValues> toMerge = selectLeavesToMerge(mergeFieldInfo, mergeState);
         OrdinalMap map = createOrdinalMapForSortedSetDV(toMerge, mergeState);
-        addSortedSetField(mergeFieldInfo, new DocValuesSource(mergeStats) {
+        addSortedSetField(mergeFieldInfo, new TsdbDocValuesProducer(mergeStats) {
             @Override
             public SortedSetDocValues getSortedSet(final FieldInfo fieldInfo) throws IOException {
                 if (fieldInfo != mergeFieldInfo) {

@@ -194,8 +194,8 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     public void addNumericField(final FieldInfo field, final DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(NUMERIC);
-        final DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
-        final DocValuesSource producer = new DocValuesSource(source.mergeStats) {
+        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
+        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo f) throws IOException {
                 return DocValues.singleton(source.getNumeric(f));
@@ -209,7 +209,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
     private long[] writeField(
         final FieldInfo field,
-        final DocValuesSource valuesSource,
+        final TsdbDocValuesProducer valuesSource,
         long maxOrd,
         final OffsetsAccumulator offsetsAccumulator,
         int blockSize
@@ -254,7 +254,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         meta.writeByte(BINARY);
         meta.writeByte(formatConfig.binaryCompressionMode().code);
 
-        final DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
+        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
         if (source.mergeStats.supported()) {
             final int numDocsWithField = source.mergeStats.sumNumDocsWithField();
             final int minLength = source.mergeStats.minLength();
@@ -562,7 +562,8 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     }
 
     private void doAddSortedField(final FieldInfo field, final DocValuesProducer valuesProducer, boolean addTypeByte) throws IOException {
-        final DocValuesSource producer = new IndexingDocValuesSource(valuesProducer) {
+        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
+        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo field) throws IOException {
                 SortedDocValues sorted = valuesProducer.getSorted(field);
@@ -755,10 +756,10 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     public void addSortedNumericField(final FieldInfo field, final DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(SORTED_NUMERIC);
-        writeSortedNumericField(field, new IndexingDocValuesSource(valuesProducer), -1);
+        writeSortedNumericField(field, new TsdbDocValuesProducer(valuesProducer), -1);
     }
 
-    private void writeSortedNumericField(final FieldInfo field, final DocValuesSource valuesSource, long maxOrd) throws IOException {
+    private void writeSortedNumericField(final FieldInfo field, final TsdbDocValuesProducer valuesSource, long maxOrd) throws IOException {
         if (field.docValuesSkipIndexType() != DocValuesSkipIndexType.NONE) {
             writeSkipIndex(field, valuesSource);
         }
@@ -827,7 +828,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         }
     }
 
-    private static boolean isSingleValued(final FieldInfo field, final DocValuesSource producer) throws IOException {
+    private static boolean isSingleValued(final FieldInfo field, final TsdbDocValuesProducer producer) throws IOException {
         if (producer.mergeStats.supported()) {
             return producer.mergeStats.sumNumValues() == producer.mergeStats.sumNumDocsWithField();
         }
@@ -863,8 +864,9 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         meta.writeInt(field.number);
         meta.writeByte(SORTED_SET);
 
-        if (isSingleValued(field, new IndexingDocValuesSource(valuesProducer))) {
-            doAddSortedField(field, new IndexingDocValuesSource(valuesProducer) {
+        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
+        if (isSingleValued(field, source)) {
+            doAddSortedField(field, new TsdbDocValuesProducer(source.mergeStats) {
                 @Override
                 public SortedDocValues getSorted(final FieldInfo field) throws IOException {
                     return SortedSetSelector.wrap(valuesProducer.getSortedSet(field), SortedSetSelector.Type.MIN);
@@ -875,7 +877,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
         SortedSetDocValues values = valuesProducer.getSortedSet(field);
         long maxOrd = values.getValueCount();
-        writeSortedNumericField(field, new IndexingDocValuesSource(valuesProducer) {
+        writeSortedNumericField(field, new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo field) throws IOException {
                 SortedSetDocValues values = valuesProducer.getSortedSet(field);

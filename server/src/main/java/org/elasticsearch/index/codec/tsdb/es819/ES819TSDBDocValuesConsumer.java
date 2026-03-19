@@ -23,12 +23,12 @@ import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.DISIAccumulator;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
-import org.elasticsearch.index.codec.tsdb.DocValuesSource;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
 import org.elasticsearch.index.codec.tsdb.OffsetsAccumulator;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
+import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -81,7 +81,7 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
         @Override
         public long[] write(
             final FieldInfo field,
-            final DocValuesSource valuesSource,
+            final TsdbDocValuesProducer valuesSource,
             long maxOrd,
             final OffsetsAccumulator offsetsAccumulator
         ) throws IOException {
@@ -235,7 +235,7 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
             final IndexOutput meta,
             final IndexOutput data,
             final NumericWriteContext ctx,
-            final DocValuesSource valuesSource,
+            final TsdbDocValuesProducer valuesSource,
             final FieldInfo field,
             long maxOrd,
             int numDocsWithValue,

@@ -45,9 +45,9 @@ import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.DISIAccumulator;
 import org.elasticsearch.index.codec.tsdb.DocValuesConsumerUtil.MergeStats;
-import org.elasticsearch.index.codec.tsdb.DocValuesSource;
 import org.elasticsearch.index.codec.tsdb.OffsetsAccumulator;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
+import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.XDocValuesConsumer;
 
 import java.io.IOException;
@@ -129,8 +129,8 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
     public void addNumericField(FieldInfo field, DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(AbstractTSDBDocValuesConsumer.NUMERIC);
-        DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
-        DocValuesSource producer = new DocValuesSource(source.mergeStats) {
+        TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
+        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo f) throws IOException {
                 return DocValues.singleton(source.getNumeric(f));
@@ -150,7 +150,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
             && (numDocsWithValue / maxOrd) >= minDocsPerOrdinalForOrdinalRangeEncoding;
     }
 
-    private long[] writeField(FieldInfo field, DocValuesSource valuesSource, long maxOrd, OffsetsAccumulator offsetsAccumulator)
+    private long[] writeField(FieldInfo field, TsdbDocValuesProducer valuesSource, long maxOrd, OffsetsAccumulator offsetsAccumulator)
         throws IOException {
         int numDocsWithValue = 0;
         long numValues = 0;
@@ -328,7 +328,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
         meta.writeInt(field.number);
         meta.writeByte(AbstractTSDBDocValuesConsumer.BINARY);
 
-        final DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
+        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
         if (source.mergeStats.supported()) {
             final int numDocsWithField = source.mergeStats.sumNumDocsWithField();
             final int minLength = source.mergeStats.minLength();
@@ -481,8 +481,8 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
     }
 
     private void doAddSortedField(FieldInfo field, DocValuesProducer valuesProducer, boolean addTypeByte) throws IOException {
-        DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
-        DocValuesSource producer = new DocValuesSource(source.mergeStats) {
+        TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
+        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
                 SortedDocValues sorted = source.getSorted(field);
@@ -677,10 +677,10 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
     public void addSortedNumericField(FieldInfo field, DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(AbstractTSDBDocValuesConsumer.SORTED_NUMERIC);
-        writeSortedNumericField(field, DocValuesSource.fromProducer(valuesProducer), -1);
+        writeSortedNumericField(field, new TsdbDocValuesProducer(valuesProducer), -1);
     }
 
-    private void writeSortedNumericField(FieldInfo field, DocValuesSource valuesSource, long maxOrd) throws IOException {
+    private void writeSortedNumericField(FieldInfo field, TsdbDocValuesProducer valuesSource, long maxOrd) throws IOException {
         if (field.docValuesSkipIndexType() != DocValuesSkipIndexType.NONE) {
             writeSkipIndex(field, valuesSource);
         }
@@ -748,7 +748,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
         }
     }
 
-    private static boolean isSingleValued(FieldInfo field, DocValuesSource producer) throws IOException {
+    private static boolean isSingleValued(FieldInfo field, TsdbDocValuesProducer producer) throws IOException {
         if (producer.mergeStats.supported()) {
             return producer.mergeStats.sumNumValues() == producer.mergeStats.sumNumDocsWithField();
         }
@@ -784,9 +784,9 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
         meta.writeInt(field.number);
         meta.writeByte(SORTED_SET);
 
-        DocValuesSource source = DocValuesSource.fromProducer(valuesProducer);
+        TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
         if (isSingleValued(field, source)) {
-            doAddSortedField(field, new DocValuesSource(source.mergeStats) {
+            doAddSortedField(field, new TsdbDocValuesProducer(source.mergeStats) {
                 @Override
                 public SortedDocValues getSorted(FieldInfo f) throws IOException {
                     return SortedSetSelector.wrap(source.getSortedSet(f), SortedSetSelector.Type.MIN);
@@ -797,7 +797,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
 
         SortedSetDocValues values = source.getSortedSet(field);
         long maxOrd = values.getValueCount();
-        writeSortedNumericField(field, new DocValuesSource(source.mergeStats) {
+        writeSortedNumericField(field, new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo f) throws IOException {
                 SortedSetDocValues values = source.getSortedSet(f);

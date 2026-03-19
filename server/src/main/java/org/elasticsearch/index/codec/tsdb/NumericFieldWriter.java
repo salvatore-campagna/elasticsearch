@@ -40,7 +40,8 @@ public interface NumericFieldWriter {
      * @param offsetsAccumulator  accumulator for sorted-numeric offsets, or null
      * @return array of [numDocsWithValue, numValues]
      */
-    long[] write(FieldInfo field, DocValuesSource valuesSource, long maxOrd, OffsetsAccumulator offsetsAccumulator) throws IOException;
+    long[] write(FieldInfo field, TsdbDocValuesProducer valuesSource, long maxOrd, OffsetsAccumulator offsetsAccumulator)
+        throws IOException;
 
     /**
      * Encodes a block of numeric values.
