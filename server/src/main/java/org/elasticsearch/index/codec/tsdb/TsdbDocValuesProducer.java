@@ -20,26 +20,17 @@ import org.apache.lucene.index.SortedSetDocValues;
 
 import java.io.IOException;
 
-/**
- * A {@link DocValuesProducer} that carries {@link DocValuesConsumerUtil.MergeStats}
- * alongside the doc values data.
- *
- * <p>On the merge path, anonymous subclasses override the doc values methods they need
- * and provide pre-computed merge stats. On the add/indexing path, the constructor that
- * takes a {@link DocValuesProducer} delegates all methods to it and reports stats as
- * {@link DocValuesConsumerUtil#UNSUPPORTED}.
- */
 public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
 
     public final DocValuesConsumerUtil.MergeStats mergeStats;
     private final DocValuesProducer actual;
 
-    public TsdbDocValuesProducer(final DocValuesConsumerUtil.MergeStats mergeStats) {
+    public TsdbDocValuesProducer(DocValuesConsumerUtil.MergeStats mergeStats) {
         this.mergeStats = mergeStats;
         this.actual = null;
     }
 
-    public TsdbDocValuesProducer(final DocValuesProducer valuesProducer) {
+    public TsdbDocValuesProducer(DocValuesProducer valuesProducer) {
         if (valuesProducer instanceof TsdbDocValuesProducer tsdb) {
             mergeStats = tsdb.mergeStats;
         } else {
@@ -49,7 +40,7 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
     }
 
     @Override
-    public NumericDocValues getNumeric(final FieldInfo field) throws IOException {
+    public NumericDocValues getNumeric(FieldInfo field) throws IOException {
         if (actual != null) {
             return actual.getNumeric(field);
         } else {
@@ -58,7 +49,7 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
     }
 
     @Override
-    public BinaryDocValues getBinary(final FieldInfo field) throws IOException {
+    public BinaryDocValues getBinary(FieldInfo field) throws IOException {
         if (actual != null) {
             return actual.getBinary(field);
         } else {
@@ -67,7 +58,7 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
     }
 
     @Override
-    public SortedDocValues getSorted(final FieldInfo field) throws IOException {
+    public SortedDocValues getSorted(FieldInfo field) throws IOException {
         if (actual != null) {
             return actual.getSorted(field);
         } else {
@@ -76,7 +67,7 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
     }
 
     @Override
-    public SortedSetDocValues getSortedSet(final FieldInfo field) throws IOException {
+    public SortedSetDocValues getSortedSet(FieldInfo field) throws IOException {
         if (actual != null) {
             return actual.getSortedSet(field);
         } else {
@@ -85,7 +76,7 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
     }
 
     @Override
-    public SortedNumericDocValues getSortedNumeric(final FieldInfo field) throws IOException {
+    public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
         if (actual != null) {
             return actual.getSortedNumeric(field);
         } else {
