@@ -50,7 +50,7 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
         final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
         return new NumericFieldReader() {
             @Override
-            public void read(final IndexInput meta, final NumericEntry e, int numericBlockShift) throws IOException {
+            public void readField(final IndexInput meta, final NumericEntry e, int numericBlockShift) throws IOException {
                 e.numValues = meta.readLong();
                 e.numDocsWithField = meta.readInt();
                 if (e.numValues > 0) {
@@ -76,13 +76,18 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
             }
 
             @Override
-            public void readBlock(final DataInput input, final long[] values, int count) throws IOException {
-                encoder.decode(input, values);
-            }
+            public Decoder decoder() {
+                return new Decoder() {
+                    @Override
+                    public void decodeBlock(final DataInput input, final long[] values, int count) throws IOException {
+                        encoder.decode(input, values);
+                    }
 
-            @Override
-            public void readOrdinals(final DataInput input, final long[] values, int bitsPerOrd) throws IOException {
-                encoder.decodeOrdinals(input, values, bitsPerOrd);
+                    @Override
+                    public void decodeOrdinals(final DataInput input, final long[] values, int bitsPerOrd) throws IOException {
+                        encoder.decodeOrdinals(input, values, bitsPerOrd);
+                    }
+                };
             }
         };
     }

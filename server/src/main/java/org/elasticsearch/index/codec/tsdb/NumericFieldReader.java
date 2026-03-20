@@ -15,46 +15,58 @@ import org.apache.lucene.store.IndexInput;
 import java.io.IOException;
 
 /**
- * Reads and decodes numeric doc values for a single field during segment reading.
+ * Reads numeric doc values for a single field during segment reading.
  *
  * <p>Each codec version provides its own implementation via
- * {@link AbstractTSDBDocValuesProducer#createNumericFieldReader}. The lifecycle is:
- * <ol>
- *   <li>{@link #read}: once per field during segment open, reads the full numeric
- *       entry metadata including value counts, ordinal detection, codec-specific header,
- *       offsets, and DISI metadata</li>
- *   <li>{@link #readBlock}: per block during iteration, decodes numeric values</li>
- *   <li>{@link #readOrdinals}: per block during iteration, decodes ordinal values</li>
- * </ol>
+ * {@link AbstractTSDBDocValuesProducer#createNumericFieldReader}. The two levels are:
+ * <ul>
+ *   <li>Per-field: {@link #readField} reads the full numeric entry metadata</li>
+ *   <li>Per-block: {@link Decoder#decodeBlock} and {@link Decoder#decodeOrdinals} decode
+ *       individual blocks during iteration</li>
+ * </ul>
  *
  * @see NumericFieldWriter
  */
 public interface NumericFieldReader {
 
     /**
-     * Reads the full numeric field: entry metadata, ordinal detection, and DISI.
+     * Reads the full numeric field metadata: value counts, ordinal detection,
+     * codec-specific header, offsets, and DISI.
      *
      * @param meta              the metadata input stream
      * @param entry             the numeric entry to populate
      * @param numericBlockShift the block shift for numeric encoding
      */
-    void read(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
+    void readField(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
 
     /**
-     * Decodes a block of numeric values.
+     * Returns a decoder for per-block numeric value decoding.
      *
-     * @param input  the input to read compressed bytes from
-     * @param values the output array to fill with decoded values
-     * @param count  the number of values to decode
+     * @return a new decoder instance
      */
-    void readBlock(DataInput input, long[] values, int count) throws IOException;
+    Decoder decoder();
 
     /**
-     * Decodes a block of ordinal values.
-     *
-     * @param input      the input to read compressed bytes from
-     * @param values     the output array to fill with decoded ordinal values
-     * @param bitsPerOrd the number of bits per ordinal
+     * Per-block decoder for numeric values and ordinals.
      */
-    void readOrdinals(DataInput input, long[] values, int bitsPerOrd) throws IOException;
+    interface Decoder {
+
+        /**
+         * Decodes a block of numeric values.
+         *
+         * @param input  the input to read compressed bytes from
+         * @param values the output array to fill with decoded values
+         * @param count  the number of values to decode
+         */
+        void decodeBlock(DataInput input, long[] values, int count) throws IOException;
+
+        /**
+         * Decodes a block of ordinal values.
+         *
+         * @param input      the input to read compressed bytes from
+         * @param values     the output array to fill with decoded ordinal values
+         * @param bitsPerOrd the number of bits per ordinal
+         */
+        void decodeOrdinals(DataInput input, long[] values, int bitsPerOrd) throws IOException;
+    }
 }

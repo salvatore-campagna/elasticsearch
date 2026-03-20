@@ -16,6 +16,15 @@ import org.apache.lucene.store.IndexOutput;
 /**
  * Shared write-path state for numeric field writers. Created once per segment
  * by the consumer and passed to {@link NumericFieldWriter} instances.
+ *
+ * @param meta                   the metadata output stream
+ * @param data                   the data output stream
+ * @param dir                    the segment directory
+ * @param ioContext              the I/O context for temporary files
+ * @param maxDoc                 the maximum document count in the segment
+ * @param blockSize              the number of values per numeric block
+ * @param primarySortFieldNumber the field number of the primary sort field
+ * @param formatConfig           the format configuration for this codec version
  */
 public record NumericWriteContext(
     IndexOutput meta,

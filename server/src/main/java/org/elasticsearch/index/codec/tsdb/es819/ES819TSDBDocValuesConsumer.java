@@ -24,8 +24,8 @@ import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.DISIAccumulator;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter;
+import org.elasticsearch.index.codec.tsdb.NumericFieldWriter.OffsetsConsumer;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
-import org.elasticsearch.index.codec.tsdb.OffsetsAccumulator;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
@@ -61,33 +61,38 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
     private static final class ES819NumericFieldWriter implements NumericFieldWriter {
 
         private final NumericWriteContext ctx;
-        private final TSDBDocValuesEncoder encoder;
 
         ES819NumericFieldWriter(final NumericWriteContext ctx) {
             this.ctx = ctx;
-            this.encoder = new TSDBDocValuesEncoder(ctx.blockSize());
         }
 
         @Override
-        public void writeBlock(final long[] values, int blockSize, final IndexOutput data) throws IOException {
-            encoder.encode(values, data);
+        public Encoder encoder() {
+            final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(ctx.blockSize());
+            return new Encoder() {
+                @Override
+                public void encodeBlock(final long[] values, int blockSize, final IndexOutput data) throws IOException {
+                    encoder.encode(values, data);
+                }
+
+                @Override
+                public void encodeOrdinals(final long[] values, final IndexOutput data, int bitsPerOrd) throws IOException {
+                    encoder.encodeOrdinals(values, data, bitsPerOrd);
+                }
+            };
         }
 
         @Override
-        public void writeOrdinals(final long[] values, final IndexOutput data, int bitsPerOrd) throws IOException {
-            encoder.encodeOrdinals(values, data, bitsPerOrd);
-        }
-
-        @Override
-        public long[] write(
+        public long[] writeField(
             final FieldInfo field,
             final TsdbDocValuesProducer valuesSource,
             long maxOrd,
-            final OffsetsAccumulator offsetsAccumulator
+            final OffsetsConsumer offsetsConsumer
         ) throws IOException {
             final IndexOutput meta = ctx.meta();
             final IndexOutput data = ctx.data();
             final int blockSize = ctx.blockSize();
+            final Encoder blockEncoder = encoder();
             final int blockShift = Integer.numberOfTrailingZeros(blockSize);
             final int maxDoc = ctx.maxDoc();
             final TSDBDocValuesFormatConfig formatConfig = ctx.formatConfig();
@@ -121,7 +126,7 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                     if (maxOrd == 1) {
                         meta.writeInt(INDEX_SINGLE_ORDINAL);
                     } else if (shouldEncodeOrdinalRange(ctx, field, maxOrd, numDocsWithValue, numValues)) {
-                        assert offsetsAccumulator == null;
+                        assert offsetsConsumer == null;
                         meta.writeInt(INDEX_ORDINAL_RANGE);
                         meta.writeVInt(Math.toIntExact(maxOrd));
                         meta.writeByte((byte) formatConfig.ordinalRangeBlockShift());
@@ -170,17 +175,17 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                                 disiAccumulator.addDocId(doc);
                             }
                             final int count = values.docValueCount();
-                            if (offsetsAccumulator != null) {
-                                offsetsAccumulator.addDoc(count);
+                            if (offsetsConsumer != null) {
+                                offsetsConsumer.accept(count);
                             }
                             for (int i = 0; i < count; ++i) {
                                 buffer[bufferSize++] = values.nextValue();
                                 if (bufferSize == blockSize) {
                                     indexWriter.add(data.getFilePointer() - valuesDataOffset);
                                     if (useOrdinals) {
-                                        writeOrdinals(buffer, data, bitsPerOrd);
+                                        blockEncoder.encodeOrdinals(buffer, data, bitsPerOrd);
                                     } else {
-                                        writeBlock(buffer, blockSize, data);
+                                        blockEncoder.encodeBlock(buffer, blockSize, data);
                                     }
                                     bufferSize = 0;
                                 }
@@ -190,9 +195,9 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                             indexWriter.add(data.getFilePointer() - valuesDataOffset);
                             Arrays.fill(buffer, bufferSize, blockSize, 0L);
                             if (useOrdinals) {
-                                writeOrdinals(buffer, data, bitsPerOrd);
+                                blockEncoder.encodeOrdinals(buffer, data, bitsPerOrd);
                             } else {
-                                writeBlock(buffer, blockSize, data);
+                                blockEncoder.encodeBlock(buffer, blockSize, data);
                             }
                         }
                     }

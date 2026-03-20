@@ -224,8 +224,8 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             primarySortFieldNumber,
             formatConfig
         );
-        final NumericFieldWriter numericFieldWriter = createNumericFieldWriter(ctx);
-        return numericFieldWriter.write(field, valuesSource, maxOrd, offsetsAccumulator);
+        return createNumericFieldWriter(ctx).writeField(field, valuesSource, maxOrd, offsetsAccumulator != null ? offsetsAccumulator::addDoc : null);
+
     }
 
     @Override
