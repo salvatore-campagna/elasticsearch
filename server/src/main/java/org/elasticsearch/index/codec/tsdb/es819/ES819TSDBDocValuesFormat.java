@@ -41,37 +41,37 @@ import java.io.IOException;
  */
 public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValuesFormat {
 
-    public static final int NUMERIC_BLOCK_SHIFT = 7;
-    public static final int NUMERIC_LARGE_BLOCK_SHIFT = 9;
-    public static final int DIRECT_MONOTONIC_BLOCK_SHIFT = 16;
-    public static final String CODEC_NAME = "ES819TSDB";
-    public static final String DATA_CODEC = "ES819TSDBDocValuesData";
-    public static final String DATA_EXTENSION = "dvd";
-    public static final String META_CODEC = "ES819TSDBDocValuesMetadata";
-    public static final String META_EXTENSION = "dvm";
-    public static final int VERSION_START = 0;
-    public static final int VERSION_BINARY_DV_COMPRESSION = 1;
-    public static final int VERSION_NUMERIC_LARGE_BLOCKS = 2;
-    public static final int VERSION_CURRENT = VERSION_NUMERIC_LARGE_BLOCKS;
+    static final int NUMERIC_BLOCK_SHIFT = 7;
+    static final int NUMERIC_LARGE_BLOCK_SHIFT = 9;
+    static final int DIRECT_MONOTONIC_BLOCK_SHIFT = 16;
+    static final String CODEC_NAME = "ES819TSDB";
+    static final String DATA_CODEC = "ES819TSDBDocValuesData";
+    static final String DATA_EXTENSION = "dvd";
+    static final String META_CODEC = "ES819TSDBDocValuesMetadata";
+    static final String META_EXTENSION = "dvm";
+    static final int VERSION_START = 0;
+    static final int VERSION_BINARY_DV_COMPRESSION = 1;
+    static final int VERSION_NUMERIC_LARGE_BLOCKS = 2;
+    static final int VERSION_CURRENT = VERSION_NUMERIC_LARGE_BLOCKS;
 
-    public static final int TERMS_DICT_BLOCK_LZ4_SHIFT = 6;
-    public static final int TERMS_DICT_BLOCK_LZ4_SIZE = 1 << TERMS_DICT_BLOCK_LZ4_SHIFT;
-    public static final int TERMS_DICT_BLOCK_LZ4_MASK = TERMS_DICT_BLOCK_LZ4_SIZE - 1;
+    static final int TERMS_DICT_BLOCK_LZ4_SHIFT = 6;
+    static final int TERMS_DICT_BLOCK_LZ4_SIZE = 1 << TERMS_DICT_BLOCK_LZ4_SHIFT;
+    static final int TERMS_DICT_BLOCK_LZ4_MASK = TERMS_DICT_BLOCK_LZ4_SIZE - 1;
 
-    public static final int TERMS_DICT_REVERSE_INDEX_SHIFT = 10;
-    public static final int TERMS_DICT_REVERSE_INDEX_SIZE = 1 << TERMS_DICT_REVERSE_INDEX_SHIFT;
-    public static final int TERMS_DICT_REVERSE_INDEX_MASK = TERMS_DICT_REVERSE_INDEX_SIZE - 1;
+    static final int TERMS_DICT_REVERSE_INDEX_SHIFT = 10;
+    static final int TERMS_DICT_REVERSE_INDEX_SIZE = 1 << TERMS_DICT_REVERSE_INDEX_SHIFT;
+    static final int TERMS_DICT_REVERSE_INDEX_MASK = TERMS_DICT_REVERSE_INDEX_SIZE - 1;
 
     /**
      * These thresholds determine the size of a compressed binary block. We build a new block if the uncompressed data in the block
      * is 128k, or if the number of values is 1024. These values are a tradeoff between the high compression ratio and decompression
      * speed of large blocks, and the ability to avoid decompressing unneeded values provided by small blocks.
       */
-    public static final int BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT = 128 * 1024;
-    public static final int BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT = 1024;
+    static final int BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT = 128 * 1024;
+    static final int BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT = 1024;
 
     // number of documents in an interval
-    public static final int DEFAULT_SKIP_INDEX_INTERVAL_SIZE = 4096;
+    static final int DEFAULT_SKIP_INDEX_INTERVAL_SIZE = 4096;
     // bytes on an interval:
     // * 1 byte : number of levels
     // * 16 bytes: min / max value,
@@ -80,11 +80,11 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
 
     // number of intervals represented as a shift to create a new level, this is 1 << 3 == 8
     // intervals.
-    public static final int SKIP_INDEX_LEVEL_SHIFT = 3;
+    static final int SKIP_INDEX_LEVEL_SHIFT = 3;
     // max number of levels
     // Increasing this number, it increases how much heap we need at index time.
     // we currently need (1 * 8 * 8 * 8) = 512 accumulators on heap
-    public static final int SKIP_INDEX_MAX_LEVEL = 4;
+    static final int SKIP_INDEX_MAX_LEVEL = 4;
     // Default for escape hatch:
     static final boolean OPTIMIZED_MERGE_ENABLE_DEFAULT;
     static final String OPTIMIZED_MERGE_ENABLED_NAME = ES819TSDBDocValuesConsumer.class.getName() + ".enableOptimizedMerge";
@@ -107,12 +107,12 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
      * If the average number of documents per ordinal is below this threshold, it is more efficient to encode doc values in blocks.
      * A much smaller value may be used in tests to exercise ordinal range encoding more frequently.
      */
-    public static final int ORDINAL_RANGE_ENCODING_MIN_DOC_PER_ORDINAL = 512;
+    static final int ORDINAL_RANGE_ENCODING_MIN_DOC_PER_ORDINAL = 512;
 
     /**
      * The block shift used in DirectMonotonicWriter when encoding the start docs of each ordinal with ordinal range encoding.
      */
-    public static final int ORDINAL_RANGE_ENCODING_BLOCK_SHIFT = 12;
+    static final int ORDINAL_RANGE_ENCODING_BLOCK_SHIFT = 12;
 
     static final VersionConfig VERSION_CONFIG = new VersionConfig(
         VERSION_START,
