@@ -198,7 +198,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo f) throws IOException {
-                return DocValues.singleton(source.getNumeric(f));
+                return DocValues.singleton(valuesProducer.getNumeric(f));
             }
         };
         if (field.docValuesSkipIndexType() != DocValuesSkipIndexType.NONE) {
@@ -262,7 +262,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
             assert numDocsWithField <= maxDoc;
 
-            BinaryDocValues values = source.getBinary(field);
+            BinaryDocValues values = valuesProducer.getBinary(field);
             long start = data.getFilePointer();
             meta.writeLong(start); // dataOffset
 
@@ -324,12 +324,12 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             BinaryWriter binaryWriter = null;
             try {
                 if (formatConfig.binaryCompressionMode() == BinaryDVCompressionMode.NO_COMPRESS) {
-                    binaryWriter = new DirectBinaryWriter(null, source.getBinary(field));
+                    binaryWriter = new DirectBinaryWriter(null, valuesProducer.getBinary(field));
                 } else {
                     binaryWriter = new CompressedBinaryBlockWriter(formatConfig.binaryCompressionMode());
                 }
 
-                BinaryDocValues values = source.getBinary(field);
+                BinaryDocValues values = valuesProducer.getBinary(field);
                 long start = data.getFilePointer();
                 meta.writeLong(start); // dataOffset
                 int numDocsWithField = 0;
@@ -361,7 +361,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                 } else {
                     long offset = data.getFilePointer();
                     meta.writeLong(offset); // docsWithFieldOffset
-                    values = source.getBinary(field);
+                    values = valuesProducer.getBinary(field);
                     final short jumpTableEntryCount = IndexedDISI.writeBitSet(values, data, IndexedDISI.DEFAULT_DENSE_RANK_POWER);
                     meta.writeLong(data.getFilePointer() - offset); // docsWithFieldLength
                     meta.writeShort(jumpTableEntryCount);

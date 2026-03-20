@@ -10,10 +10,8 @@
 package org.elasticsearch.index.codec.tsdb;
 
 import org.apache.lucene.codecs.DocValuesProducer;
-import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.EmptyDocValuesProducer;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
@@ -37,24 +35,6 @@ public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
             mergeStats = DocValuesConsumerUtil.UNSUPPORTED;
         }
         this.actual = valuesProducer;
-    }
-
-    @Override
-    public NumericDocValues getNumeric(FieldInfo field) throws IOException {
-        if (actual != null) {
-            return actual.getNumeric(field);
-        } else {
-            return super.getNumeric(field);
-        }
-    }
-
-    @Override
-    public BinaryDocValues getBinary(FieldInfo field) throws IOException {
-        if (actual != null) {
-            return actual.getBinary(field);
-        } else {
-            return super.getBinary(field);
-        }
     }
 
     @Override
