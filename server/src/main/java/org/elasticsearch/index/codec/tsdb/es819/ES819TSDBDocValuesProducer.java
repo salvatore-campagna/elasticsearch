@@ -47,7 +47,6 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
 
     @Override
     protected NumericFieldReader createNumericFieldReader(final NumericEntry entry, int numericBlockSize) {
-        final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
         return new NumericFieldReader() {
             @Override
             public void readField(final IndexInput meta, final NumericEntry e, int numericBlockShift) throws IOException {
@@ -77,15 +76,16 @@ final class ES819TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
 
             @Override
             public Decoder decoder() {
+                final TSDBDocValuesEncoder decoder = new TSDBDocValuesEncoder(numericBlockSize);
                 return new Decoder() {
                     @Override
                     public void decodeBlock(final DataInput input, final long[] values, int count) throws IOException {
-                        encoder.decode(input, values);
+                        decoder.decode(input, values);
                     }
 
                     @Override
                     public void decodeOrdinals(final DataInput input, final long[] values, int bitsPerOrd) throws IOException {
-                        encoder.decodeOrdinals(input, values, bitsPerOrd);
+                        decoder.decodeOrdinals(input, values, bitsPerOrd);
                     }
                 };
             }
