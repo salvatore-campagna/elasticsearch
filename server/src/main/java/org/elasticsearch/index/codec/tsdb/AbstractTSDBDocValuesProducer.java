@@ -47,6 +47,7 @@ import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.core.Assertions;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.lucene.queries.BinaryDocValuesContainsTermQuery;
 import org.elasticsearch.index.mapper.BlockLoader;
 import org.elasticsearch.index.mapper.blockloader.docvalues.BlockDocValuesReader;
 import org.elasticsearch.index.mapper.blockloader.docvalues.CustomBinaryDocValuesReader;
@@ -517,8 +518,13 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                 }
 
                 @Override
-                public DocIdSetIterator lengthIterator(int length) throws IOException {
+                public DocIdSetIterator tryLengthIterator(int length) throws IOException {
                     return decoder.decodeLengthsBulk(entry.numCompressedBlocks, 0, maxDoc - 1, length);
+                }
+
+                @Override
+                public DocIdSetIterator tryContainsIterator(BytesRef containsTerm) throws IOException {
+                    return decoder.containsTermIterator(entry.numCompressedBlocks, 0, maxDoc - 1, containsTerm);
                 }
             };
         } else {
@@ -769,6 +775,76 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
 
                     currentBlockId = endBlockId;
                     return currentDocId = currentDocIdRunEnd = DocIdSetIterator.NO_MORE_DOCS;
+                }
+            };
+        }
+
+        DocIdSetIterator containsTermIterator(int numBlocks, int firstDocId, int lastDocId, BytesRef containsTerm) throws IOException {
+            final long firstBlockId = findBlock(firstDocId, numBlocks, 0);
+            final long endBlockId = findBlock(lastDocId, numBlocks, firstBlockId);
+            return new DocIdSetIterator() {
+
+                int currentDocId = -1;
+
+                @Override
+                public int docID() {
+                    return currentDocId;
+                }
+
+                @Override
+                public int nextDoc() throws IOException {
+                    return advance(currentDocId + 1);
+                }
+
+                @Override
+                public int advance(int target) throws IOException {
+                    return scanToTargetDocId(target);
+                }
+
+                @Override
+                public long cost() {
+                    return lastDocId + 1;
+                }
+
+                long currentBlockId = -1;
+                int blockStartDocId;
+                int blockEndDocId;
+
+                int scanToTargetDocId(int target) throws IOException {
+                    for (long blockId = currentBlockId == -1 ? firstBlockId : currentBlockId; blockId <= endBlockId; blockId++) {
+                        if (blockId != currentBlockId) {
+                            blockStartDocId = (int) docOffsets.get(blockId);
+                            blockEndDocId = (int) docOffsets.get(blockId + 1);
+                        }
+
+                        if (blockEndDocId <= target) {
+                            continue;
+                        }
+
+                        if (blockId != currentBlockId) {
+                            int numDocsInBlock = blockEndDocId - blockStartDocId;
+                            decompressBlock(blockId, numDocsInBlock);
+                        }
+
+                        int startDocId = blockId == firstBlockId ? firstDocId : blockStartDocId;
+                        if (startDocId < target) {
+                            startDocId = target;
+                        }
+                        int endDocId = blockId == endBlockId ? lastDocId + 1 : blockEndDocId;
+
+                        for (int docId = startDocId; docId < endDocId; docId++) {
+                            int index = docId - blockStartDocId;
+                            int offset = uncompressedDocStarts[index];
+                            int length = uncompressedDocStarts[index + 1] - offset;
+                            if (BinaryDocValuesContainsTermQuery.contains(uncompressedBlock, offset, length, containsTerm)) {
+                                currentBlockId = blockId;
+                                return currentDocId = docId;
+                            }
+                        }
+                    }
+
+                    currentBlockId = endBlockId;
+                    return currentDocId = DocIdSetIterator.NO_MORE_DOCS;
                 }
             };
         }
