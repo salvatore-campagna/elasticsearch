@@ -21,7 +21,12 @@ public class ES819TSDBDocValuesFormatFactoryTests extends ESTestCase {
     public void testVersion3() {
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3, false, false, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(
+                IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3,
+                false,
+                false,
+                false
+            )
         );
     }
 
