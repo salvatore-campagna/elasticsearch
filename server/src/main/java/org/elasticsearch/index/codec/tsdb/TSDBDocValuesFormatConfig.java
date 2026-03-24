@@ -26,7 +26,8 @@ public record TSDBDocValuesFormatConfig(
     SkipIndexConfig skipIndex,
     NumericConfig numeric,
     BinaryConfig binary,
-    int directMonotonicBlockShift
+    int directMonotonicBlockShift,
+    boolean writePrefixPartitions
 ) {
 
     /** @return minimum format version for header validation */
@@ -47,6 +48,11 @@ public record TSDBDocValuesFormatConfig(
     /** @return version at which binary DV compression was introduced */
     public int versionBinaryCompression() {
         return version.binaryCompression();
+    }
+
+    /** @return version at which prefix partitions were introduced */
+    public int versionPrefixPartitions() {
+        return version.prefixPartitions();
     }
 
     /** @return terms dict block mask */
@@ -120,12 +126,13 @@ public record TSDBDocValuesFormatConfig(
     }
 
     /**
-     * @param start             minimum format version for header validation
-     * @param current           format version to write in file headers
-     * @param largeBlocks       version at which large numeric blocks were introduced
-     * @param binaryCompression version at which binary DV compression was introduced
+     * @param start              minimum format version for header validation
+     * @param current            format version to write in file headers
+     * @param largeBlocks        version at which large numeric blocks were introduced
+     * @param binaryCompression  version at which binary DV compression was introduced
+     * @param prefixPartitions   version at which prefix partitions were introduced
      */
-    public record VersionConfig(int start, int current, int largeBlocks, int binaryCompression) {}
+    public record VersionConfig(int start, int current, int largeBlocks, int binaryCompression, int prefixPartitions) {}
 
     /**
      * @param blockLz4Mask      terms dict block mask

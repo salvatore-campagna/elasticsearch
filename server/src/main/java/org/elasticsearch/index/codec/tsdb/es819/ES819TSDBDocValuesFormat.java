@@ -52,7 +52,8 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
     static final int VERSION_START = 0;
     static final int VERSION_BINARY_DV_COMPRESSION = 1;
     static final int VERSION_NUMERIC_LARGE_BLOCKS = 2;
-    static final int VERSION_CURRENT = VERSION_NUMERIC_LARGE_BLOCKS;
+    static final int VERSION_PREFIX_PARTITIONS = 4;
+    static final int VERSION_CURRENT = VERSION_PREFIX_PARTITIONS;
 
     static final int TERMS_DICT_BLOCK_LZ4_SHIFT = 6;
     static final int TERMS_DICT_BLOCK_LZ4_SIZE = 1 << TERMS_DICT_BLOCK_LZ4_SHIFT;
@@ -118,7 +119,8 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
         VERSION_START,
         VERSION_CURRENT,
         VERSION_NUMERIC_LARGE_BLOCKS,
-        VERSION_BINARY_DV_COMPRESSION
+        VERSION_BINARY_DV_COMPRESSION,
+        VERSION_PREFIX_PARTITIONS
     );
 
     static final TermsDictConfig TERMS_DICT_CONFIG = new TermsDictConfig(
@@ -247,6 +249,34 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
         int blockBytesThreshold,
         int blockCountThreshold
     ) {
+        this(
+            codecName,
+            skipIndexIntervalSize,
+            minDocsPerOrdinalForRangeEncoding,
+            enableOptimizedMerge,
+            binaryDVCompressionMode,
+            enablePerBlockCompression,
+            numericBlockShift,
+            docOffsetsCodec,
+            blockBytesThreshold,
+            blockCountThreshold,
+            false
+        );
+    }
+
+    public ES819TSDBDocValuesFormat(
+        String codecName,
+        int skipIndexIntervalSize,
+        int minDocsPerOrdinalForRangeEncoding,
+        boolean enableOptimizedMerge,
+        BinaryDVCompressionMode binaryDVCompressionMode,
+        final boolean enablePerBlockCompression,
+        final int numericBlockShift,
+        DocOffsetsCodec docOffsetsCodec,
+        int blockBytesThreshold,
+        int blockCountThreshold,
+        boolean writePrefixPartitions
+    ) {
         super(codecName);
         assert numericBlockShift == NUMERIC_BLOCK_SHIFT || numericBlockShift == NUMERIC_LARGE_BLOCK_SHIFT : numericBlockShift;
         if (skipIndexIntervalSize < 2) {
@@ -269,7 +299,8 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
                 enablePerBlockCompression,
                 binaryDVCompressionMode
             ),
-            DIRECT_MONOTONIC_BLOCK_SHIFT
+            DIRECT_MONOTONIC_BLOCK_SHIFT,
+            writePrefixPartitions
         );
     }
 

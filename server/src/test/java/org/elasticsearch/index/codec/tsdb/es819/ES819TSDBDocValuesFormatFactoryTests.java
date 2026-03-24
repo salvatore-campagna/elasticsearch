@@ -21,36 +21,46 @@ public class ES819TSDBDocValuesFormatFactoryTests extends ESTestCase {
     public void testVersion3() {
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3, false, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3, false, false, false)
         );
     }
 
     public void testVersion3WithLargeNumericBlockSize() {
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT_LARGE_NUMERIC_BLOCK,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3, true, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3, true, false, false)
         );
     }
 
     public void testVersion3WithLargeBinaryBlockSize() {
-        var actual = (ES819Version3TSDBDocValuesFormat) ES819TSDBDocValuesFormatFactory.createDocValuesFormat(
+        var withPartition = (ES819Version3TSDBDocValuesFormat) ES819TSDBDocValuesFormatFactory.createDocValuesFormat(
             IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3,
             false,
+            true,
             true
         );
-        assertSame(ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT_LARGE_BINARY_BLOCK, actual);
-        assertThat(actual.formatConfig.blockBytesThreshold(), equalTo(1024 * 1024));
-        assertThat(actual.formatConfig.blockCountThreshold(), equalTo(32768));
+        assertSame(ES819TSDBDocValuesFormatFactory.ES_819_4_TSDB_DOC_VALUES_FORMAT_LARGE_BINARY_BLOCK, withPartition);
+        assertThat(withPartition.formatConfig.blockBytesThreshold(), equalTo(1024 * 1024));
+        assertThat(withPartition.formatConfig.blockCountThreshold(), equalTo(32768));
+        var withoutPartition = (ES819Version3TSDBDocValuesFormat) ES819TSDBDocValuesFormatFactory.createDocValuesFormat(
+            IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3,
+            false,
+            true,
+            false
+        );
+        assertSame(ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT_LARGE_BINARY_BLOCK, withoutPartition);
+        assertThat(withoutPartition.formatConfig.blockBytesThreshold(), equalTo(1024 * 1024));
+        assertThat(withoutPartition.formatConfig.blockCountThreshold(), equalTo(32768));
     }
 
     public void testVersionAfterVersion3() {
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersion.current(), false, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersion.current(), false, false, false)
         );
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_3_TSDB_DOC_VALUES_FORMAT_LARGE_NUMERIC_BLOCK,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersion.current(), true, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(IndexVersion.current(), true, false, false)
         );
     }
 
@@ -58,7 +68,7 @@ public class ES819TSDBDocValuesFormatFactoryTests extends ESTestCase {
         IndexVersion preV3 = IndexVersionUtils.getPreviousVersion(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3);
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_2_TSDB_DOC_VALUES_FORMAT,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(preV3, false, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(preV3, false, false, false)
         );
     }
 
@@ -66,7 +76,7 @@ public class ES819TSDBDocValuesFormatFactoryTests extends ESTestCase {
         IndexVersion preV3 = IndexVersionUtils.getPreviousVersion(IndexVersions.TIME_SERIES_DOC_VALUES_FORMAT_VERSION_3);
         assertSame(
             ES819TSDBDocValuesFormatFactory.ES_819_2_TSDB_DOC_VALUES_FORMAT_LARGE_NUMERIC_BLOCK,
-            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(preV3, true, false)
+            ES819TSDBDocValuesFormatFactory.createDocValuesFormat(preV3, true, false, false)
         );
     }
 }

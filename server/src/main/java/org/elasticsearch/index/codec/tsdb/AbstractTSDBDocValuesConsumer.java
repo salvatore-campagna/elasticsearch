@@ -50,6 +50,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.elasticsearch.index.codec.tsdb.es819.PrefixedPartitionsWriter;
+
 import static org.elasticsearch.index.codec.tsdb.DocValuesConsumerUtil.compatibleWithOptimizedMerge;
 
 /**
@@ -612,14 +614,26 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         if (addTypeByte) {
             meta.writeByte((byte) 0); // multiValued (0 = singleValued)
         }
-        SortedDocValues sorted = valuesProducer.getSorted(field);
-        int maxOrd = sorted.getValueCount();
+        final SortedDocValues sorted = valuesProducer.getSorted(field);
+        final int maxOrd = sorted.getValueCount();
         final int blockSize = numericBlockSize;
+        var partitionWriter = primarySortFieldNumber == field.number && formatConfig.writePrefixPartitions()
+            ? new PrefixedPartitionsWriter()
+            : null;
+        addTermsDict(DocValues.singleton(sorted), partitionWriter);
+        if (partitionWriter != null) {
+            partitionWriter.prepareForTrackingDocs();
+        }
         writeField(field, producer, maxOrd, null, blockSize);
-        addTermsDict(DocValues.singleton(valuesProducer.getSorted(field)));
+        if (primarySortFieldNumber == field.number) {
+            meta.writeByte(partitionWriter != null ? (byte) 1 : (byte) 0);
+        }
+        if (partitionWriter != null) {
+            partitionWriter.flush(data, meta);
+        }
     }
 
-    private void addTermsDict(final SortedSetDocValues values) throws IOException {
+    private void addTermsDict(final SortedSetDocValues values, final PrefixedPartitionsWriter partitionWriter) throws IOException {
         final long size = values.getValueCount();
         meta.writeVLong(size);
 
@@ -673,6 +687,9 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                     bufferedOutput.writeVInt(suffixLength - 16);
                 }
                 bufferedOutput.writeBytes(term.bytes, term.offset + prefixLength, suffixLength);
+            }
+            if (partitionWriter != null) {
+                partitionWriter.trackTerm(term, ord);
             }
             maxLength = Math.max(maxLength, term.length);
             previous.copyBytes(term);
@@ -938,7 +955,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             }
         }, maxOrd);
 
-        addTermsDict(valuesProducer.getSortedSet(field));
+        addTermsDict(valuesProducer.getSortedSet(field), null);
     }
 
     @Override
