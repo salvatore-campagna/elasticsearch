@@ -43,7 +43,6 @@ import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.compress.LZ4;
 import org.apache.lucene.util.packed.DirectMonotonicWriter;
 import org.elasticsearch.core.IOUtils;
-import org.elasticsearch.index.codec.tsdb.es819.PrefixedPartitionsWriter;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -91,18 +90,20 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     protected final TSDBDocValuesFormatConfig formatConfig;
     final long[] skipIndexJumpLengthPerLevel;
     private final DocOffsetsCodec.Encoder docOffsetsEncoder;
+    private final SortedFieldObserverFactory sortedFieldObserverFactory;
 
     /**
      * Construct a new consumer that writes doc values in the TSDB wire format.
      *
-     * @param state              segment write state
-     * @param enableOptimizedMerge whether optimized merge is enabled
+     * @param state                       segment write state
+     * @param enableOptimizedMerge        whether optimized merge is enabled
      * @param dataCodec          codec name for the data file header
      * @param dataExtension      file extension for the data file
      * @param metaCodec          codec name for the meta file header
      * @param metaExtension      file extension for the meta file
-     * @param formatConfig       format-specific configuration for this codec version
-     * @param docOffsetsEncoder  encoder for doc offsets in compressed binary blocks
+     * @param formatConfig                format-specific configuration for this codec version
+     * @param docOffsetsEncoder           encoder for doc offsets in compressed binary blocks
+     * @param sortedFieldObserverFactory  factory for creating observers during sorted field writes
      */
     @SuppressWarnings("this-escape")
     protected AbstractTSDBDocValuesConsumer(
@@ -113,10 +114,12 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final String metaCodec,
         final String metaExtension,
         final TSDBDocValuesFormatConfig formatConfig,
-        final DocOffsetsCodec.Encoder docOffsetsEncoder
+        final DocOffsetsCodec.Encoder docOffsetsEncoder,
+        final SortedFieldObserverFactory sortedFieldObserverFactory
     ) throws IOException {
         this.state = state;
         this.docOffsetsEncoder = docOffsetsEncoder;
+        this.sortedFieldObserverFactory = sortedFieldObserverFactory;
         this.termsDictBuffer = new byte[1 << 14];
         this.dir = state.directory;
         this.primarySortFieldNumber = AbstractTSDBDocValuesProducer.primarySortFieldNumber(state.segmentInfo, state.fieldInfos);
@@ -611,25 +614,19 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         if (addTypeByte) {
             meta.writeByte((byte) 0); // multiValued (0 = singleValued)
         }
-        var partitionWriter = primarySortFieldNumber == field.number && formatConfig.writePrefixPartitions()
-            ? new PrefixedPartitionsWriter()
-            : null;
+        final SortedFieldObserver observer = sortedFieldObserverFactory.create(field);
         final SortedDocValues sorted = valuesProducer.getSorted(field);
         final int maxOrd = sorted.getValueCount();
-        addTermsDict(DocValues.singleton(sorted), partitionWriter);
-        if (partitionWriter != null) {
-            partitionWriter.prepareForTrackingDocs();
-        }
+        addTermsDict(DocValues.singleton(sorted), observer);
+        observer.prepareForDocs();
         writeField(field, producer, maxOrd, null, numericBlockSize);
         if (primarySortFieldNumber == field.number) {
-            meta.writeByte(partitionWriter != null ? (byte) 1 : (byte) 0);
+            meta.writeByte(observer != SortedFieldObserver.NOOP ? (byte) 1 : (byte) 0);
         }
-        if (partitionWriter != null) {
-            partitionWriter.flush(data, meta);
-        }
+        observer.flush(data, meta);
     }
 
-    private void addTermsDict(final SortedSetDocValues values, final PrefixedPartitionsWriter partitionWriter) throws IOException {
+    private void addTermsDict(final SortedSetDocValues values, final SortedFieldObserver observer) throws IOException {
         final long size = values.getValueCount();
         meta.writeVLong(size);
 
@@ -684,9 +681,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                 }
                 bufferedOutput.writeBytes(term.bytes, term.offset + prefixLength, suffixLength);
             }
-            if (partitionWriter != null) {
-                partitionWriter.trackTerm(term, ord);
-            }
+            observer.onTerm(term, ord);
             maxLength = Math.max(maxLength, term.length);
             previous.copyBytes(term);
             ++ord;
@@ -951,7 +946,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             }
         }, maxOrd);
 
-        addTermsDict(valuesProducer.getSortedSet(field), null);
+        addTermsDict(valuesProducer.getSortedSet(field), SortedFieldObserver.NOOP);
     }
 
     @Override

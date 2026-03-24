@@ -26,6 +26,7 @@ import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter.OffsetsConsumer;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
+import org.elasticsearch.index.codec.tsdb.SortedFieldObserverFactory;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
@@ -48,9 +49,20 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
         final String metaCodec,
         final String metaExtension,
         final TSDBDocValuesFormatConfig formatConfig,
-        final DocOffsetsCodec.Encoder docOffsetsEncoder
+        final DocOffsetsCodec.Encoder docOffsetsEncoder,
+        final SortedFieldObserverFactory sortedFieldObserverFactory
     ) throws IOException {
-        super(state, enableOptimizedMerge, dataCodec, dataExtension, metaCodec, metaExtension, formatConfig, docOffsetsEncoder);
+        super(
+            state,
+            enableOptimizedMerge,
+            dataCodec,
+            dataExtension,
+            metaCodec,
+            metaExtension,
+            formatConfig,
+            docOffsetsEncoder,
+            sortedFieldObserverFactory
+        );
     }
 
     @Override

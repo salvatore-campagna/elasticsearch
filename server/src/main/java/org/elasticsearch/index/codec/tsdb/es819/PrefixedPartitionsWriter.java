@@ -11,6 +11,7 @@ package org.elasticsearch.index.codec.tsdb.es819;
 
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.index.codec.tsdb.SortedFieldObserver;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -23,22 +24,22 @@ import java.util.Arrays;
  * {@link #PARTITION_PREFIX_BITS} bits, and the starting document for each prefix group is recorded. This enables the query engine
  * to partition work by prefix without scanning all doc values.
  * <p>
- * Usage is two-pass: first call {@link #trackTerm} for each term during the terms dict write, then call {@link #prepareForTrackingDocs}
- * to compact the prefix-to-ordinal mapping, and finally call {@link #trackDoc} for each ordinal during the numeric field write.
+ * Usage is two-pass: first call {@link #onTerm} for each term during the terms dict write, then call {@link #prepareForDocs}
+ * to compact the prefix-to-ordinal mapping, and finally call {@link #onDoc} for each ordinal during the numeric field write.
  *
  * <pre>{@code
  * // Pass 1: track terms during terms dict write
  * PrefixedPartitionsWriter writer = new PrefixedPartitionsWriter();
  * for (BytesRef term = termsEnum.next(); term != null; term = termsEnum.next()) {
- *     writer.trackTerm(term, termsEnum.ord());
+ *     writer.onTerm(term, termsEnum.ord());
  * }
  *
  * // Transition: compact prefix-to-ordinal mapping
- * writer.prepareForTrackingDocs();
+ * writer.prepareForDocs();
  *
  * // Pass 2: track start docs
  * for (int doc = values.nextDoc(); doc != NO_MORE_DOCS; doc = values.nextDoc()) {
- *     writer.trackDoc(doc, values.ordValue());
+ *     writer.onDoc(doc, values.ordValue());
  * }
  *
  * writer.flush(data, meta);
@@ -46,7 +47,7 @@ import java.util.Arrays;
  *
  * @see PrefixedPartitionsReader
  */
-public final class PrefixedPartitionsWriter {
+public final class PrefixedPartitionsWriter implements SortedFieldObserver {
     static final int PARTITION_PREFIX_BITS = 18; // the first byte is the metric type; the remaining 10 bits provide up to 1024 partitions
                                                  // per metric
     static final int PAGE_SHIFT = PARTITION_PREFIX_BITS - Byte.SIZE;
@@ -93,7 +94,8 @@ public final class PrefixedPartitionsWriter {
         return (int) BE_INT.get(term.bytes, term.offset) >>> (Integer.SIZE - PARTITION_PREFIX_BITS);
     }
 
-    public void trackTerm(BytesRef term, long ord) {
+    @Override
+    public void onTerm(BytesRef term, long ord) {
         final int prefix = prefix(term);
         final int pageIndex = prefix >>> PAGE_SHIFT;
         final int offsetInPage = prefix & PAGE_MASK;
@@ -126,18 +128,21 @@ public final class PrefixedPartitionsWriter {
         return Integer.MAX_VALUE;
     }
 
-    public void prepareForTrackingDocs() {
+    @Override
+    public void prepareForDocs() {
         startDocs = new int[numPrefixes];
         currentOrd = nextOrd();
     }
 
-    public void trackDoc(int docId, long ord) {
+    @Override
+    public void onDoc(int docId, long ord) {
         while (currentOrd <= ord) {
             startDocs[idx++] = docId;
             currentOrd = nextOrd();
         }
     }
 
+    @Override
     public void flush(IndexOutput data, IndexOutput meta) throws IOException {
         final long startPointer = data.getFilePointer();
         data.writeVInt(numPrefixes);

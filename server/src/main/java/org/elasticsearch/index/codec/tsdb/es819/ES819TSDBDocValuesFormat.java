@@ -15,8 +15,11 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.elasticsearch.common.logging.DeprecationCategory;
 import org.elasticsearch.common.util.LenientBooleans;
+import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
+import org.elasticsearch.index.codec.tsdb.SortedFieldObserver;
+import org.elasticsearch.index.codec.tsdb.SortedFieldObserverFactory;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig.TermsDictConfig;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig.VersionConfig;
@@ -314,7 +317,12 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
             META_CODEC,
             META_EXTENSION,
             formatConfig,
-            docOffsetsCodec.getEncoder()
+            docOffsetsCodec.getEncoder(),
+            formatConfig.writePrefixPartitions()
+                ? field -> field.number == AbstractTSDBDocValuesProducer.primarySortFieldNumber(state.segmentInfo, state.fieldInfos)
+                    ? new PrefixedPartitionsWriter()
+                    : SortedFieldObserver.NOOP
+                : SortedFieldObserverFactory.NOOP
         );
     }
 
