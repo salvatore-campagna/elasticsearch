@@ -196,8 +196,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     public void addNumericField(final FieldInfo field, final DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(NUMERIC);
-        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
-        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
+        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(valuesProducer) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo f) throws IOException {
                 return DocValues.singleton(valuesProducer.getNumeric(f));
@@ -569,8 +568,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     }
 
     private void doAddSortedField(final FieldInfo field, final DocValuesProducer valuesProducer, boolean addTypeByte) throws IOException {
-        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
-        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
+        final TsdbDocValuesProducer producer = new TsdbDocValuesProducer(valuesProducer) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo field) throws IOException {
                 SortedDocValues sorted = valuesProducer.getSorted(field);
@@ -614,17 +612,16 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         if (addTypeByte) {
             meta.writeByte((byte) 0); // multiValued (0 = singleValued)
         }
-        final SortedDocValues sorted = valuesProducer.getSorted(field);
-        final int maxOrd = sorted.getValueCount();
-        final int blockSize = numericBlockSize;
         var partitionWriter = primarySortFieldNumber == field.number && formatConfig.writePrefixPartitions()
             ? new PrefixedPartitionsWriter()
             : null;
+        final SortedDocValues sorted = valuesProducer.getSorted(field);
+        final int maxOrd = sorted.getValueCount();
         addTermsDict(DocValues.singleton(sorted), partitionWriter);
         if (partitionWriter != null) {
             partitionWriter.prepareForTrackingDocs();
         }
-        writeField(field, producer, maxOrd, null, blockSize);
+        writeField(field, producer, maxOrd, null, numericBlockSize);
         if (primarySortFieldNumber == field.number) {
             meta.writeByte(partitionWriter != null ? (byte) 1 : (byte) 0);
         }
