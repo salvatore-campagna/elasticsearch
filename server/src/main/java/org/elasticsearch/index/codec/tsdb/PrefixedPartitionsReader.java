@@ -7,10 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-package org.elasticsearch.index.codec.tsdb.es819;
+package org.elasticsearch.index.codec.tsdb;
 
 import org.apache.lucene.store.IndexInput;
-import org.elasticsearch.index.codec.tsdb.PartitionedDocValues;
 
 import java.io.IOException;
 

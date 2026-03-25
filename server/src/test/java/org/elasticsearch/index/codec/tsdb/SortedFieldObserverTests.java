@@ -22,8 +22,6 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
-import org.elasticsearch.index.codec.tsdb.es819.PrefixedPartitionsReader;
-import org.elasticsearch.index.codec.tsdb.es819.PrefixedPartitionsWriter;
 import org.elasticsearch.test.ESTestCase;
 
 import java.io.IOException;

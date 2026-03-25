@@ -7,11 +7,10 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-package org.elasticsearch.index.codec.tsdb.es819;
+package org.elasticsearch.index.codec.tsdb;
 
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
-import org.elasticsearch.index.codec.tsdb.SortedFieldObserver;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -48,11 +47,11 @@ import java.util.Arrays;
  * @see PrefixedPartitionsReader
  */
 public final class PrefixedPartitionsWriter implements SortedFieldObserver {
-    static final int PARTITION_PREFIX_BITS = 18; // the first byte is the metric type; the remaining 10 bits provide up to 1024 partitions
-                                                 // per metric
+    public static final int PARTITION_PREFIX_BITS = 18; // the first byte is the metric type; the remaining 10 bits provide up to 1024
+                                                        // partitions per metric
     static final int PAGE_SHIFT = PARTITION_PREFIX_BITS - Byte.SIZE;
     static final int PAGE_MASK = (1 << PAGE_SHIFT) - 1;
-    static final VarHandle BE_INT = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.BIG_ENDIAN);
+    public static final VarHandle BE_INT = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.BIG_ENDIAN);
 
     private int currentOrd = -1;
 
