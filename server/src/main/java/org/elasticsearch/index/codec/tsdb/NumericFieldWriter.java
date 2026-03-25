@@ -36,10 +36,17 @@ public interface NumericFieldWriter {
      * @param field               the field being written
      * @param valuesSource        the source of doc values
      * @param maxOrd              the maximum ordinal value, or -1 if not using ordinals
-     * @param offsetsConsumer  consumer for per-doc value counts (sorted-numeric offsets), or null
+     * @param offsetsConsumer     consumer for per-doc value counts (sorted-numeric offsets), or null
+     * @param sortedFieldObserver observer notified of (docId, ord) pairs during the doc pass, or null
      * @return array of [numDocsWithValue, numValues]
      */
-    long[] writeField(FieldInfo field, TsdbDocValuesProducer valuesSource, long maxOrd, OffsetsConsumer offsetsConsumer) throws IOException;
+    long[] writeField(
+        FieldInfo field,
+        TsdbDocValuesProducer valuesSource,
+        long maxOrd,
+        OffsetsConsumer offsetsConsumer,
+        SortedFieldObserver sortedFieldObserver
+    ) throws IOException;
 
     /**
      * Accepts per-doc value counts for sorted-numeric offset tracking.

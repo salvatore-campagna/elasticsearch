@@ -207,7 +207,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         if (field.docValuesSkipIndexType() != DocValuesSkipIndexType.NONE) {
             writeSkipIndex(field, producer);
         }
-        writeField(field, producer, -1, null, numericBlockSize);
+        writeField(field, producer, -1, null, numericBlockSize, null);
     }
 
     private long[] writeField(
@@ -215,7 +215,8 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final TsdbDocValuesProducer valuesSource,
         long maxOrd,
         final OffsetsAccumulator offsetsAccumulator,
-        int blockSize
+        int blockSize,
+        final SortedFieldObserver sortedFieldObserver
     ) throws IOException {
         final NumericWriteContext ctx = new NumericWriteContext(
             meta,
@@ -231,9 +232,9 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             field,
             valuesSource,
             maxOrd,
-            offsetsAccumulator != null ? offsetsAccumulator::addDoc : null
+            offsetsAccumulator != null ? offsetsAccumulator::addDoc : null,
+            sortedFieldObserver
         );
-
     }
 
     @Override
@@ -619,7 +620,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final int maxOrd = sorted.getValueCount();
         addTermsDict(DocValues.singleton(sorted), observer);
         observer.prepareForDocs();
-        writeField(field, producer, maxOrd, null, numericBlockSize);
+        writeField(field, producer, maxOrd, null, numericBlockSize, observer);
         if (primarySortFieldNumber == field.number) {
             meta.writeByte(observer != SortedFieldObserver.NOOP ? (byte) 1 : (byte) 0);
         }
@@ -785,7 +786,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             int numDocsWithField = valuesSource.mergeStats.sumNumDocsWithField();
             long numValues = valuesSource.mergeStats.sumNumValues();
             if (numDocsWithField == numValues) {
-                writeField(field, valuesSource, maxOrd, null, blockSize);
+                writeField(field, valuesSource, maxOrd, null, blockSize, null);
             } else {
                 assert numValues > numDocsWithField;
                 try (
@@ -797,12 +798,12 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                         formatConfig.directMonotonicBlockShift()
                     )
                 ) {
-                    writeField(field, valuesSource, maxOrd, accumulator, blockSize);
+                    writeField(field, valuesSource, maxOrd, accumulator, blockSize, null);
                     accumulator.build(meta, data);
                 }
             }
         } else {
-            long[] stats = writeField(field, valuesSource, maxOrd, null, blockSize);
+            long[] stats = writeField(field, valuesSource, maxOrd, null, blockSize, null);
             int numDocsWithField = Math.toIntExact(stats[0]);
             long numValues = stats[1];
             assert numValues >= numDocsWithField;

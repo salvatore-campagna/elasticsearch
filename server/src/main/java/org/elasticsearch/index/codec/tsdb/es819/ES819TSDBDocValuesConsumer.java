@@ -26,6 +26,7 @@ import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter;
 import org.elasticsearch.index.codec.tsdb.NumericFieldWriter.OffsetsConsumer;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
+import org.elasticsearch.index.codec.tsdb.SortedFieldObserver;
 import org.elasticsearch.index.codec.tsdb.SortedFieldObserverFactory;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesEncoder;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
@@ -99,7 +100,8 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
             final FieldInfo field,
             final TsdbDocValuesProducer valuesSource,
             long maxOrd,
-            final OffsetsConsumer offsetsConsumer
+            final OffsetsConsumer offsetsConsumer,
+            final SortedFieldObserver sortedFieldObserver
         ) throws IOException {
             final IndexOutput meta = ctx.meta();
             final IndexOutput data = ctx.data();
@@ -137,6 +139,9 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                     final long valuesDataOffset = data.getFilePointer();
                     if (maxOrd == 1) {
                         meta.writeInt(INDEX_SINGLE_ORDINAL);
+                        if (sortedFieldObserver != null) {
+                            sortedFieldObserver.onDoc(0, 0);
+                        }
                     } else if (shouldEncodeOrdinalRange(ctx, field, maxOrd, numDocsWithValue, numValues)) {
                         assert offsetsConsumer == null;
                         meta.writeInt(INDEX_ORDINAL_RANGE);
@@ -154,6 +159,9 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                         );
                         long lastOrd = 0;
                         startDocs.add(0);
+                        if (sortedFieldObserver != null) {
+                            sortedFieldObserver.onDoc(0, lastOrd);
+                        }
                         for (int doc = values.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = values.nextDoc()) {
                             if (disiAccumulator != null) {
                                 disiAccumulator.addDocId(doc);
@@ -162,6 +170,9 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                             if (nextOrd != lastOrd) {
                                 lastOrd = nextOrd;
                                 startDocs.add(doc);
+                                if (sortedFieldObserver != null) {
+                                    sortedFieldObserver.onDoc(doc, nextOrd);
+                                }
                             }
                         }
                         startDocs.add(maxDoc);
@@ -191,7 +202,11 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
                                 offsetsConsumer.accept(count);
                             }
                             for (int i = 0; i < count; ++i) {
-                                buffer[bufferSize++] = values.nextValue();
+                                final long v = values.nextValue();
+                                if (sortedFieldObserver != null) {
+                                    sortedFieldObserver.onDoc(doc, v);
+                                }
+                                buffer[bufferSize++] = v;
                                 if (bufferSize == blockSize) {
                                     indexWriter.add(data.getFilePointer() - valuesDataOffset);
                                     if (useOrdinals) {
