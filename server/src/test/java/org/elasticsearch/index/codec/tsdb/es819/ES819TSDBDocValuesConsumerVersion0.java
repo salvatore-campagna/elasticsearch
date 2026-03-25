@@ -129,11 +129,10 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
     public void addNumericField(FieldInfo field, DocValuesProducer valuesProducer) throws IOException {
         meta.writeInt(field.number);
         meta.writeByte(AbstractTSDBDocValuesConsumer.NUMERIC);
-        TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
-        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
+        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(valuesProducer) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo f) throws IOException {
-                return DocValues.singleton(source.getNumeric(f));
+                return DocValues.singleton(valuesProducer.getNumeric(f));
             }
         };
         if (field.docValuesSkipIndexType() != DocValuesSkipIndexType.NONE) {
@@ -328,15 +327,14 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
         meta.writeInt(field.number);
         meta.writeByte(AbstractTSDBDocValuesConsumer.BINARY);
 
-        final TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
-        if (source.mergeStats.supported()) {
-            final int numDocsWithField = source.mergeStats.sumNumDocsWithField();
-            final int minLength = source.mergeStats.minLength();
-            final int maxLength = source.mergeStats.maxLength();
+        if (valuesProducer instanceof TsdbDocValuesProducer tsdbValuesProducer && tsdbValuesProducer.mergeStats.supported()) {
+            final int numDocsWithField = tsdbValuesProducer.mergeStats.sumNumDocsWithField();
+            final int minLength = tsdbValuesProducer.mergeStats.minLength();
+            final int maxLength = tsdbValuesProducer.mergeStats.maxLength();
 
             assert numDocsWithField <= maxDoc;
 
-            BinaryDocValues values = source.getBinary(field);
+            BinaryDocValues values = valuesProducer.getBinary(field);
             long start = data.getFilePointer();
             meta.writeLong(start); // dataOffset
 
@@ -399,7 +397,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
                 IOUtils.close(disiAccumulator, offsetsAccumulator);
             }
         } else {
-            BinaryDocValues values = source.getBinary(field);
+            BinaryDocValues values = valuesProducer.getBinary(field);
             long start = data.getFilePointer();
             meta.writeLong(start); // dataOffset
             int numDocsWithField = 0;
@@ -429,7 +427,7 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
             } else {
                 long offset = data.getFilePointer();
                 meta.writeLong(offset); // docsWithFieldOffset
-                values = source.getBinary(field);
+                values = valuesProducer.getBinary(field);
                 final short jumpTableEntryCount = IndexedDISI.writeBitSet(values, data, IndexedDISI.DEFAULT_DENSE_RANK_POWER);
                 meta.writeLong(data.getFilePointer() - offset); // docsWithFieldLength
                 meta.writeShort(jumpTableEntryCount);
@@ -481,11 +479,10 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
     }
 
     private void doAddSortedField(FieldInfo field, DocValuesProducer valuesProducer, boolean addTypeByte) throws IOException {
-        TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
-        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(source.mergeStats) {
+        TsdbDocValuesProducer producer = new TsdbDocValuesProducer(valuesProducer) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
-                SortedDocValues sorted = source.getSorted(field);
+                SortedDocValues sorted = valuesProducer.getSorted(field);
                 NumericDocValues sortedOrds = new NumericDocValues() {
                     @Override
                     public long longValue() throws IOException {
@@ -786,21 +783,21 @@ final class ES819TSDBDocValuesConsumerVersion0 extends XDocValuesConsumer {
 
         TsdbDocValuesProducer source = new TsdbDocValuesProducer(valuesProducer);
         if (isSingleValued(field, source)) {
-            doAddSortedField(field, new TsdbDocValuesProducer(source.mergeStats) {
+            doAddSortedField(field, new TsdbDocValuesProducer(valuesProducer) {
                 @Override
                 public SortedDocValues getSorted(FieldInfo f) throws IOException {
-                    return SortedSetSelector.wrap(source.getSortedSet(f), SortedSetSelector.Type.MIN);
+                    return SortedSetSelector.wrap(valuesProducer.getSortedSet(f), SortedSetSelector.Type.MIN);
                 }
             }, true);
             return;
         }
 
-        SortedSetDocValues values = source.getSortedSet(field);
+        SortedSetDocValues values = valuesProducer.getSortedSet(field);
         long maxOrd = values.getValueCount();
-        writeSortedNumericField(field, new TsdbDocValuesProducer(source.mergeStats) {
+        writeSortedNumericField(field, new TsdbDocValuesProducer(valuesProducer) {
             @Override
             public SortedNumericDocValues getSortedNumeric(FieldInfo f) throws IOException {
-                SortedSetDocValues values = source.getSortedSet(f);
+                SortedSetDocValues values = valuesProducer.getSortedSet(f);
                 return new SortedNumericDocValues() {
 
                     long[] ords = LongsRef.EMPTY_LONGS;
