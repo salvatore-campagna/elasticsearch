@@ -18,6 +18,11 @@ import org.apache.lucene.index.SortedSetDocValues;
 
 import java.io.IOException;
 
+/**
+ * Wraps a {@link DocValuesProducer} to carry pre-computed {@link DocValuesConsumerUtil.MergeStats}
+ * through the optimized merge path. When wrapping another {@code TsdbDocValuesProducer}, the merge
+ * stats are carried over to avoid recomputation.
+ */
 public class TsdbDocValuesProducer extends EmptyDocValuesProducer {
 
     public final DocValuesConsumerUtil.MergeStats mergeStats;

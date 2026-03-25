@@ -19,6 +19,7 @@ package org.elasticsearch.index.codec.tsdb;
  * @param numeric                    numeric encoding parameters
  * @param binary                     binary doc values compression parameters
  * @param directMonotonicBlockShift  block shift for DirectMonotonicWriter used across all field types
+ * @param writePrefixPartitions      whether to write prefix-based partition metadata for the primary sort field
  */
 public record TSDBDocValuesFormatConfig(
     VersionConfig version,
