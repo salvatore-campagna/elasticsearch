@@ -165,7 +165,7 @@ public class SortedFieldObserverTests extends ESTestCase {
             }
 
             try (IndexInput dataInput = dir.openInput("data", IOContext.DEFAULT)) {
-                PartitionedDocValues.PrefixPartitions tooSmall = new PartitionedDocValues.PrefixPartitions(new int[1], new int[1], 1);
+                PartitionedDocValues.PrefixPartitions tooSmall = new PartitionedDocValues.PrefixPartitions(1, new int[1], new int[1]);
                 PartitionedDocValues.PrefixPartitions result = PrefixedPartitionsReader.prefixPartitions(dataInput, tooSmall);
                 assertEquals(3, result.numPartitions());
                 assertNotSame(tooSmall.prefixes(), result.prefixes());
