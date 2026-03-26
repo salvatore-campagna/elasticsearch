@@ -44,6 +44,6 @@ public final class PrefixedPartitionsReader {
             startDocs[i] = doc;
             last = doc;
         }
-        return new PartitionedDocValues.PrefixPartitions(prefixes, startDocs, numPartitions);
+        return new PartitionedDocValues.PrefixPartitions(numPartitions, prefixes, startDocs);
     }
 }
