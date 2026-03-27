@@ -76,6 +76,16 @@ public final class DeltaCodecStage implements NumericCodecStage {
         }
     }
 
+    public static void encodeStatic(final DeltaCodecStage stage, final long[] values, int valueCount, final EncodingContext context)
+        throws IOException {
+        stage.encode(values, valueCount, context);
+    }
+
+    public static void decodeStatic(final DeltaCodecStage stage, final long[] values, int valueCount, final DecodingContext context)
+        throws IOException {
+        stage.decode(values, valueCount, context);
+    }
+
     private static boolean isMonotonic(final long[] values, final int valueCount) {
         int increases = 0;
         int decreases = 0;
