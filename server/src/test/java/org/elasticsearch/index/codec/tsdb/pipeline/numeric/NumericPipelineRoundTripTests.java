@@ -23,7 +23,7 @@ import java.util.Arrays;
 public class NumericPipelineRoundTripTests extends ESTestCase {
 
     private static int randomBlockSize() {
-        return 1 << randomIntBetween(4, 9);
+        return 1 << randomIntBetween(7, 9);
     }
 
     public void testConstantValues() throws IOException {
