@@ -38,6 +38,7 @@ import org.elasticsearch.xpack.esql.core.expression.MapExpression;
 import org.elasticsearch.xpack.esql.core.expression.NamedExpression;
 import org.elasticsearch.xpack.esql.core.expression.Nullability;
 import org.elasticsearch.xpack.esql.core.expression.ReferenceAttribute;
+import org.elasticsearch.xpack.esql.core.expression.TimeSeriesMetadataAttribute;
 import org.elasticsearch.xpack.esql.core.expression.UnresolvedAttribute;
 import org.elasticsearch.xpack.esql.core.expression.predicate.operator.comparison.BinaryComparison;
 import org.elasticsearch.xpack.esql.core.tree.Source;
@@ -162,6 +163,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -7933,16 +7935,20 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
             WindowFilter windowFilter = (WindowFilter) holder.get().filter();
             assertThat(((Duration) windowFilter.window().fold(FoldContext.small())).toMinutes(), equalTo((long) window));
         }
-        // not supported
+        // non-multiple window (>= bucket) - now supported via GCD sub-bucketing
         {
-            int window = randomValueOtherThanMany(n -> n % 5 == 0, () -> between(6, 30));
+            int window = randomValueOtherThanMany(n -> n % 5 == 0 || n < 5, () -> between(6, 30));
             var query = String.format(Locale.ROOT, """
                 TS k8s
                 | STATS avg(last_over_time(network.bytes_in, %s minute)) BY tbucket(5 minute)
                 | LIMIT 10
                 """, window);
-            var error = expectThrows(IllegalArgumentException.class, () -> { planMetrics(query); });
-            assertThat(error.getMessage(), containsString("the window must be an exact multiple of the time bucket [tbucket(5 minute)]"));
+            var plan = planMetrics(query);
+            Holder<LastOverTime> holder = new Holder<>();
+            plan.forEachExpressionDown(LastOverTime.class, holder::set);
+            assertNotNull(holder.get());
+            assertTrue(holder.get().hasWindow());
+            assertThat(holder.get().window().fold(FoldContext.small()), equalTo(Duration.ofMinutes(window)));
         }
         // no time bucket
         {
@@ -7991,18 +7997,6 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
             assertNotNull(holder.get());
             assertTrue(holder.get().hasWindow());
             assertThat(holder.get().window().fold(FoldContext.small()), equalTo(Duration.ofMinutes(10)));
-        }
-        // 7m is not a multiple of 5m (the resolved bucket size), so this must be rejected
-        {
-            var query = """
-                TS k8s
-                | STATS sum(rate(network.total_bytes_in, 7m)) BY TBUCKET(20, "2024-05-10T00:00:00Z", "2024-05-10T01:00:00Z")
-                | LIMIT 10
-                """;
-            var error = expectThrows(IllegalArgumentException.class, () -> {
-                logicalOptimizerWithLatestVersion.optimize(metricsAnalyzer().query(query));
-            });
-            assertThat(error.getMessage(), containsString("the window must be an exact multiple of the time bucket"));
         }
     }
 
@@ -8099,6 +8093,118 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
                 assertThat(((Duration) maxHolder.get().window().fold(FoldContext.small())).toMinutes(), equalTo((long) window1));
             }
         }
+    }
+
+    public void testTranslateOverTimeWithNonMultipleWindow() {
+        // 7m window with 5m bucket -> GCD=1m internal bucket, 5m output bucket
+        {
+            var query = """
+                TS k8s
+                | STATS avg(last_over_time(network.bytes_in, 7 minute)) BY tbucket(5 minute)
+                | LIMIT 10
+                """;
+            var plan = planMetrics(query);
+            Holder<TimeSeriesAggregate> tsHolder = new Holder<>();
+            plan.forEachDown(TimeSeriesAggregate.class, tsHolder::set);
+            assertNotNull("expected a TimeSeriesAggregate in the plan", tsHolder.get());
+            TimeSeriesAggregate tsAgg = tsHolder.get();
+            // Internal bucket should be GCD(7m, 5m) = 1m
+            assertNotNull(tsAgg.timeBucket());
+            assertThat(tsAgg.timeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(1)));
+            // Output bucket should be the user-specified 5m
+            assertNotNull(tsAgg.outputTimeBucket());
+            assertThat(tsAgg.outputTimeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(5)));
+            // The 7m window must be preserved on the first-pass aggregate function
+            Holder<AggregateFunction> afHolder = new Holder<>();
+            tsAgg.forEachExpressionDown(AggregateFunction.class, af -> {
+                if (af.hasWindow()) {
+                    afHolder.set(af);
+                }
+            });
+            assertNotNull("expected an aggregate function with a window in the plan", afHolder.get());
+            assertThat(afHolder.get().window().fold(FoldContext.small()), equalTo(Duration.ofMinutes(7)));
+        }
+        // 12m window with 8m bucket -> GCD=4m internal bucket, 8m output bucket
+        {
+            var query = """
+                TS k8s
+                | STATS avg(last_over_time(network.bytes_in, 12 minute)) BY tbucket(8 minute)
+                | LIMIT 10
+                """;
+            var plan = planMetrics(query);
+            Holder<TimeSeriesAggregate> tsHolder = new Holder<>();
+            plan.forEachDown(TimeSeriesAggregate.class, tsHolder::set);
+            assertNotNull("expected a TimeSeriesAggregate in the plan", tsHolder.get());
+            TimeSeriesAggregate tsAgg = tsHolder.get();
+            assertThat(tsAgg.timeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(4)));
+            assertThat(tsAgg.outputTimeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(8)));
+            // The 12m window must be preserved on the first-pass aggregate function
+            Holder<AggregateFunction> afHolder = new Holder<>();
+            tsAgg.forEachExpressionDown(AggregateFunction.class, af -> {
+                if (af.hasWindow()) {
+                    afHolder.set(af);
+                }
+            });
+            assertNotNull("expected an aggregate function with a window in the plan", afHolder.get());
+            assertThat(afHolder.get().window().fold(FoldContext.small()), equalTo(Duration.ofMinutes(12)));
+        }
+        // Exact multiple: 10m window with 5m bucket -> GCD=5m, internal == output (no sub-bucketing)
+        {
+            var query = """
+                TS k8s
+                | STATS avg(last_over_time(network.bytes_in, 10 minute)) BY tbucket(5 minute)
+                | LIMIT 10
+                """;
+            var plan = planMetrics(query);
+            Holder<TimeSeriesAggregate> tsHolder = new Holder<>();
+            plan.forEachDown(TimeSeriesAggregate.class, tsHolder::set);
+            assertNotNull("expected a TimeSeriesAggregate in the plan", tsHolder.get());
+            TimeSeriesAggregate tsAgg = tsHolder.get();
+            // When window is an exact multiple, internal and output buckets should both be the user bucket
+            assertThat(tsAgg.timeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(5)));
+            assertThat(tsAgg.outputTimeBucket().buckets().fold(FoldContext.small()), equalTo(Duration.ofMinutes(5)));
+            // The 10m window must be preserved on the first-pass aggregate function
+            Holder<AggregateFunction> afHolder = new Holder<>();
+            tsAgg.forEachExpressionDown(AggregateFunction.class, af -> {
+                if (af.hasWindow()) {
+                    afHolder.set(af);
+                }
+            });
+            assertNotNull("expected an aggregate function with a window in the plan", afHolder.get());
+            assertThat(afHolder.get().window().fold(FoldContext.small()), equalTo(Duration.ofMinutes(10)));
+        }
+    }
+
+    public void testTranslateOverTimeWithCombinedSmallAndNonMultipleWindows() {
+        var e = expectThrows(IllegalArgumentException.class, () -> {
+            var query = """
+                TS k8s
+                | STATS min(max_over_time(network.bytes_in, 2 minute)), sum(rate(network.total_bytes_in, 7 minute)) BY TBUCKET(5 minute)
+                | LIMIT 10
+                """;
+            planMetrics(query);
+        });
+        assertThat(e.getMessage(), containsString("Combining windows smaller than the time bucket with non-multiple windows"));
+    }
+
+    public void testTranslateOverTimeWithTooManySubBuckets() {
+        // 301s window with 300s (5m) bucket -> GCD=1s -> 300 sub-buckets, exceeds limit of 128
+        var e = expectThrows(IllegalArgumentException.class, () -> {
+            var query = """
+                TS k8s
+                | STATS avg(last_over_time(network.bytes_in, 301 second)) BY tbucket(5 minute)
+                | LIMIT 10
+                """;
+            planMetrics(query);
+        });
+        assertThat(
+            e.getMessage(),
+            equalTo(
+                "The window [301 second] and bucket [5 minute] combination requires [300] internal sub-buckets of size [1s]"
+                    + " per output bucket, which exceeds the limit of [128];"
+                    + " use a larger time bucket or adjust the window to be an exact multiple of the time bucket"
+            )
+        );
     }
 
     public void testMvSortInvalidOrder() {
@@ -9252,6 +9358,76 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
         var eval = as(project.child(), Eval.class);
         var local = as(eval.child(), LocalRelation.class);
         assertThat(local.supplier(), instanceOf(EmptyLocalSupplier.class));
+    }
+
+    public void testWithoutGroupingWithRegularAggregates() {
+        assumeTrue("requires WITHOUT grouping", EsqlCapabilities.Cap.ESQL_WITHOUT_GROUPING.isEnabled());
+        var query = "TS k8s | STATS avg(network.cost) BY WITHOUT(pod)";
+        var plan = planMetrics(query);
+        // Verify plan contains a TimeSeriesAggregate
+        var tsAggregates = plan.collect(TimeSeriesAggregate.class);
+        assertThat(tsAggregates, hasSize(1));
+        var tsAgg = tsAggregates.get(0);
+        // After TranslateTimeSeriesAggregate, the TS aggregate groups by _tsid.
+        // The WITHOUT exclusion is encoded in the EsRelation's _timeseries attribute.
+        var esRelations = tsAgg.collect(EsRelation.class);
+        assertThat(esRelations, hasSize(1));
+        var timeSeriesAttrs = esRelations.get(0)
+            .output()
+            .stream()
+            .filter(a -> a instanceof TimeSeriesMetadataAttribute)
+            .map(a -> (TimeSeriesMetadataAttribute) a)
+            .toList();
+        assertThat(timeSeriesAttrs, hasSize(1));
+        assertThat(timeSeriesAttrs.get(0).withoutFields(), equalTo(Set.of("pod")));
+    }
+
+    public void testWithoutGroupingExcludesMultipleDimensions() {
+        assumeTrue("requires WITHOUT grouping", EsqlCapabilities.Cap.ESQL_WITHOUT_GROUPING.isEnabled());
+        var query = "TS k8s | STATS avg(network.cost) BY WITHOUT(pod, region)";
+        var plan = planMetrics(query);
+        var tsAggregates = plan.collect(TimeSeriesAggregate.class);
+        assertThat(tsAggregates, hasSize(1));
+        var esRelations = tsAggregates.get(0).collect(EsRelation.class);
+        assertThat(esRelations, hasSize(1));
+        var timeSeriesAttrs = esRelations.get(0)
+            .output()
+            .stream()
+            .filter(a -> a instanceof TimeSeriesMetadataAttribute)
+            .map(a -> (TimeSeriesMetadataAttribute) a)
+            .toList();
+        assertThat(timeSeriesAttrs, hasSize(1));
+        assertThat(timeSeriesAttrs.get(0).withoutFields(), equalTo(Set.of("pod", "region")));
+    }
+
+    public void testWithoutGroupingNoDuplicateWithTsAggFunction() {
+        assumeTrue("requires WITHOUT grouping", EsqlCapabilities.Cap.ESQL_WITHOUT_GROUPING.isEnabled());
+        assumeTrue("requires metrics group by all", EsqlCapabilities.Cap.METRICS_GROUP_BY_ALL.isEnabled());
+        var query = "TS k8s | STATS avg_over_time(network.cost) BY WITHOUT(pod)";
+        var plan = planMetrics(query);
+        // Should have exactly one TimeSeriesMetadataAttribute in the EsRelation (no duplicates)
+        var esRelations = plan.collect(EsRelation.class);
+        assertThat(esRelations, hasSize(1));
+        var timeSeriesAttrs = esRelations.get(0).output().stream().filter(a -> a instanceof TimeSeriesMetadataAttribute).toList();
+        assertThat("Expected exactly one _timeseries attribute", timeSeriesAttrs, hasSize(1));
+    }
+
+    public void testWithoutGroupingEmptyExcludesNothing() {
+        assumeTrue("requires WITHOUT grouping", EsqlCapabilities.Cap.ESQL_WITHOUT_GROUPING.isEnabled());
+        var query = "TS k8s | STATS avg(network.cost) BY WITHOUT()";
+        var plan = planMetrics(query);
+        var tsAggregates = plan.collect(TimeSeriesAggregate.class);
+        assertThat(tsAggregates, hasSize(1));
+        var esRelations = tsAggregates.get(0).collect(EsRelation.class);
+        assertThat(esRelations, hasSize(1));
+        var timeSeriesAttrs = esRelations.get(0)
+            .output()
+            .stream()
+            .filter(a -> a instanceof TimeSeriesMetadataAttribute)
+            .map(a -> (TimeSeriesMetadataAttribute) a)
+            .toList();
+        assertThat(timeSeriesAttrs, hasSize(1));
+        assertThat(timeSeriesAttrs.get(0).withoutFields(), equalTo(Set.of()));
     }
 
     public void testTimeSeriesBareFieldWithBucketAndLimitZeroDoesNotFailVerifier() {
@@ -10747,7 +10923,6 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
      * }</pre>
      */
     public void testLimitByZero() {
-        assumeTrue("LIMIT BY requires snapshot builds", EsqlCapabilities.Cap.ESQL_LIMIT_BY.isEnabled());
         var plan = plan("""
             FROM test
             | LIMIT 0 BY emp_no
@@ -10780,7 +10955,6 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
      * }
      */
     public void testOnlyLastSortPreservedTopNBy() {
-        assumeTrue("SORT | LIMIT BY requires snapshot builds", EsqlCapabilities.Cap.ESQL_TOPN_BY.isEnabled());
         var query = """
             FROM employees
             | SORT emp_no DESC
@@ -10822,7 +10996,6 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
      * }
      */
     public void testOnlyLastNonContiguousSortPreservedTopNBy() {
-        assumeTrue("SORT | LIMIT BY requires snapshot builds", EsqlCapabilities.Cap.ESQL_TOPN_BY.isEnabled());
         var query = """
             FROM employees
             | SORT emp_no DESC
@@ -10871,7 +11044,6 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
      * }
      */
     public void testOnlyLastNonContiguousSortPreservedTopNByWithExprs() {
-        assumeTrue("SORT | LIMIT BY requires snapshot builds", EsqlCapabilities.Cap.ESQL_TOPN_BY.isEnabled());
         var query = """
             FROM employees
             | SORT emp_no DESC
@@ -10920,7 +11092,7 @@ public class LogicalPlanOptimizerTests extends AbstractLogicalPlanOptimizerTests
     }
 
     public void testTopNByWorksWithQualifiedNames() {
-        assumeTrue("SORT | LIMIT BY requires snapshot builds", EsqlCapabilities.Cap.ESQL_TOPN_BY.isEnabled());
+        assumeTrue("Requires qualifier support", EsqlCapabilities.Cap.NAME_QUALIFIERS.isEnabled());
         var query = """
             FROM employees
             | SORT salary DESC
