@@ -50,6 +50,9 @@ public class MapperFeatures implements FeatureSpecification {
     static final NodeFeature PATTERNED_TEXT = new NodeFeature("mapper.patterned_text");
     public static final NodeFeature MULTI_FIELD_UNICODE_OPTIMISATION_FIX = new NodeFeature("mapper.multi_field.unicode_optimisation_fix");
     public static final NodeFeature FIX_DENSE_VECTOR_WRONG_FIELDS = new NodeFeature("mapper.fix_dense_vector_wrong_fields");
+    static final NodeFeature DENSE_VECTOR_DYNAMIC_TEMPLATE_NESTED_OBJECT_FIX = new NodeFeature(
+        "mapper.dense_vector.dynamic_template_nested_object_fix"
+    );
 
     @Override
     public Set<NodeFeature> getTestFeatures() {
@@ -85,7 +88,8 @@ public class MapperFeatures implements FeatureSpecification {
             PATTERNED_TEXT,
             MULTI_FIELD_UNICODE_OPTIMISATION_FIX,
             MATCH_ONLY_TEXT_BLOCK_LOADER_FIX,
-            FIX_DENSE_VECTOR_WRONG_FIELDS
+            FIX_DENSE_VECTOR_WRONG_FIELDS,
+            DENSE_VECTOR_DYNAMIC_TEMPLATE_NESTED_OBJECT_FIX
         );
     }
 }
