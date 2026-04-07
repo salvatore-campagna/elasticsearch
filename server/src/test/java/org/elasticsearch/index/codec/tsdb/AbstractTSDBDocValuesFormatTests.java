@@ -86,7 +86,7 @@ public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocVa
     public void testBlockWiseBinary() throws Exception {
         boolean sparse = randomBoolean();
         int numBlocksBound = 10;
-        int numNonNullValues = randomIntBetween(0, numBlocksBound * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
+        int numNonNullValues = randomIntBetween(1, numBlocksBound * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
 
         List<String> binaryValues = new ArrayList<>();
         int numNonNull = 0;
@@ -106,7 +106,7 @@ public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocVa
     public void testBlockWiseBinarySmallValues() throws Exception {
         boolean sparse = randomBoolean();
         int numBlocksBound = 5;
-        int numNonNullValues = randomIntBetween(0, numBlocksBound * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
+        int numNonNullValues = randomIntBetween(1, numBlocksBound * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
 
         List<String> binaryValues = new ArrayList<>();
         int numNonNull = 0;
@@ -127,7 +127,7 @@ public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocVa
         List<String> binaryValues = new ArrayList<>();
         int numSequences = 10;
         for (int i = 0; i < numSequences; i++) {
-            int numInSequence = randomIntBetween(0, 3 * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
+            int numInSequence = randomIntBetween(1, 3 * BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT);
             boolean emptySequence = randomBoolean();
             for (int j = 0; j < numInSequence; j++) {
                 binaryValues.add(emptySequence ? "" : randomAlphaOfLengthBetween(0, 5));
@@ -139,7 +139,7 @@ public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocVa
     public void testBlockWiseBinaryLargeValues() throws Exception {
         boolean sparse = randomBoolean();
         int numBlocksBound = 5;
-        int binaryDataSize = randomIntBetween(0, numBlocksBound * BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT);
+        int binaryDataSize = randomIntBetween(1, numBlocksBound * BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT);
         List<String> binaryValues = new ArrayList<>();
         int totalSize = 0;
         while (totalSize < binaryDataSize) {
@@ -159,6 +159,7 @@ public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocVa
     }
 
     void assertBinaryValues(List<String> binaryValues) throws Exception {
+        assert binaryValues.isEmpty() == false : "binaryValues must be non-empty";
         String timestampField = TIMESTAMP_FIELD;
         String hostnameField = HOSTNAME_FIELD;
         String binaryField = "binary_field";
