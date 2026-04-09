@@ -30,10 +30,18 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedNumericSortField;
+import org.apache.lucene.search.SortedSetSortField;
+import org.apache.lucene.tests.index.BaseDocValuesFormatTestCase;
 import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.common.Randomness;
+import org.elasticsearch.common.logging.LogConfigurator;
 import org.elasticsearch.common.util.CollectionUtils;
 import org.elasticsearch.index.codec.Elasticsearch900Lucene101Codec;
+import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer.BaseDenseNumericValues;
+import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer.BaseSortedDocValues;
+import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer.TSDBBinaryDocValues;
 import org.elasticsearch.index.mapper.BinaryFieldMapper.CustomBinaryDocValuesField;
 import org.elasticsearch.index.mapper.BlockLoader;
 import org.elasticsearch.index.mapper.BlockLoader.OptionalColumnAtATimeReader;
@@ -81,7 +89,57 @@ import static org.hamcrest.Matchers.instanceOf;
  * }
  * }</pre>
  */
-public abstract class AbstractTSDBDocValuesFormatTests extends AbstractTSDBDocValuesTestSupport {
+public abstract class AbstractTSDBDocValuesFormatTests extends BaseDocValuesFormatTestCase {
+
+    protected static final String TIMESTAMP_FIELD = "@timestamp";
+    protected static final String HOSTNAME_FIELD = "host.name";
+    protected static final long BASE_TIMESTAMP = 1704067200000L;
+
+    protected static final int BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT = 128 * 1024;
+    protected static final int BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT = 1024;
+
+    static {
+        LogConfigurator.loadLog4jPlugins();
+        LogConfigurator.configureESLogging();
+    }
+
+    protected IndexWriterConfig getTimeSeriesIndexWriterConfig(String hostnameField, String timestampField) {
+        return getTimeSeriesIndexWriterConfig(hostnameField, false, timestampField);
+    }
+
+    protected IndexWriterConfig getTimeSeriesIndexWriterConfig(String hostnameField, boolean multiValued, String timestampField) {
+        var config = new IndexWriterConfig();
+        if (hostnameField != null) {
+            config.setIndexSort(
+                new Sort(
+                    multiValued ? new SortedSetSortField(hostnameField, false) : new SortField(hostnameField, SortField.Type.STRING, false),
+                    new SortedNumericSortField(timestampField, SortField.Type.LONG, true)
+                )
+            );
+        } else {
+            config.setIndexSort(new Sort(new SortedNumericSortField(timestampField, SortField.Type.LONG, true)));
+        }
+        config.setLeafSorter(DataStream.TIMESERIES_LEAF_READERS_SORTER);
+        config.setMergePolicy(new LogByteSizeMergePolicy());
+        config.setCodec(getCodec());
+        return config;
+    }
+
+    protected static TSDBBinaryDocValues getTSDBBinaryValues(LeafReader leafReader, String field) throws IOException {
+        return (TSDBBinaryDocValues) leafReader.getBinaryDocValues(field);
+    }
+
+    protected static BaseDenseNumericValues getBaseDenseNumericValues(LeafReader leafReader, String field) throws IOException {
+        return (BaseDenseNumericValues) DocValues.unwrapSingleton(leafReader.getSortedNumericDocValues(field));
+    }
+
+    protected static BaseSortedDocValues getBaseSortedDocValues(LeafReader leafReader, String field) throws IOException {
+        var sortedDocValues = leafReader.getSortedDocValues(field);
+        if (sortedDocValues == null) {
+            sortedDocValues = DocValues.unwrapSingleton(leafReader.getSortedSetDocValues(field));
+        }
+        return (BaseSortedDocValues) sortedDocValues;
+    }
 
     public void testBlockWiseBinary() throws Exception {
         boolean sparse = randomBoolean();

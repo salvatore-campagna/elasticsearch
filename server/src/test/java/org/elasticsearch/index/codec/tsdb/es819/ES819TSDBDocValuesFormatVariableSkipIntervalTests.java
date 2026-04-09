@@ -10,8 +10,8 @@ package org.elasticsearch.index.codec.tsdb.es819;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.tests.util.TestUtil;
-import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesTestSupport;
 import org.elasticsearch.index.codec.tsdb.ES87TSDBDocValuesFormatVariableSkipIntervalTests;
+import org.elasticsearch.index.codec.tsdb.TSDBDocValuesTestUtil;
 
 /** Tests ES819TSDBDocValuesFormat with custom skipper interval size. */
 public class ES819TSDBDocValuesFormatVariableSkipIntervalTests extends ES87TSDBDocValuesFormatVariableSkipIntervalTests {
@@ -24,9 +24,9 @@ public class ES819TSDBDocValuesFormatVariableSkipIntervalTests extends ES87TSDBD
                 random().nextInt(4, 16),
                 random().nextInt(1, 32),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode(),
+                TSDBDocValuesTestUtil.randomBinaryCompressionMode(),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomNumericBlockSize(),
+                TSDBDocValuesTestUtil.randomNumericBlockSize(),
                 random().nextBoolean()
             )
         );
@@ -39,9 +39,9 @@ public class ES819TSDBDocValuesFormatVariableSkipIntervalTests extends ES87TSDBD
                 random().nextInt(Integer.MIN_VALUE, 2),
                 random().nextInt(1, 32),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode(),
+                TSDBDocValuesTestUtil.randomBinaryCompressionMode(),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomNumericBlockSize(),
+                TSDBDocValuesTestUtil.randomNumericBlockSize(),
                 random().nextBoolean()
             )
         );

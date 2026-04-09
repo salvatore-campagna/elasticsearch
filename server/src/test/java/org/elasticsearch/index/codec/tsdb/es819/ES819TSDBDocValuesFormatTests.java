@@ -39,6 +39,7 @@ import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesFormatTests;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer.BaseSortedDocValues;
 import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
 import org.elasticsearch.index.codec.tsdb.ES87TSDBDocValuesFormatTests;
+import org.elasticsearch.index.codec.tsdb.TSDBDocValuesTestUtil;
 import org.elasticsearch.index.mapper.BlockLoader;
 import org.elasticsearch.index.mapper.BlockLoader.OptionalColumnAtATimeReader;
 import org.elasticsearch.index.mapper.TestBlock;
@@ -263,9 +264,9 @@ public class ES819TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTe
                 randomIntBetween(2, 4096),
                 1,
                 random().nextBoolean(),
-                randomBinaryCompressionMode(),
+                TSDBDocValuesTestUtil.randomBinaryCompressionMode(),
                 randomBoolean(),
-                randomNumericBlockSize(),
+                TSDBDocValuesTestUtil.randomNumericBlockSize(),
                 randomBoolean()
             );
 

@@ -12,7 +12,7 @@ package org.elasticsearch.index.codec.tsdb.es819;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.tests.util.TestUtil;
 import org.elasticsearch.index.codec.tsdb.AbstractPrefixPartitionTests;
-import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesTestSupport;
+import org.elasticsearch.index.codec.tsdb.TSDBDocValuesTestUtil;
 
 public class PrefixPartitionTests extends AbstractPrefixPartitionTests {
 
@@ -23,9 +23,9 @@ public class PrefixPartitionTests extends AbstractPrefixPartitionTests {
                 random().nextInt(4, 16),
                 random().nextInt(1, 32),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode(),
+                TSDBDocValuesTestUtil.randomBinaryCompressionMode(),
                 random().nextBoolean(),
-                AbstractTSDBDocValuesTestSupport.randomNumericBlockSize(),
+                TSDBDocValuesTestUtil.randomNumericBlockSize(),
                 writePrefixPartitions
             )
         );

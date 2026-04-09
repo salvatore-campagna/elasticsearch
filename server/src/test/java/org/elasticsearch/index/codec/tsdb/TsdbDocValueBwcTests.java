@@ -61,14 +61,14 @@ public class TsdbDocValueBwcTests extends ESTestCase {
 
     public void testMixedIndex() throws Exception {
         var oldCodec = TestUtil.alwaysDocValuesFormat(new TestES87TSDBDocValuesFormat());
-        var compressionMode = AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode();
+        var compressionMode = TSDBDocValuesTestUtil.randomBinaryCompressionMode();
         var newCodec = TestUtil.alwaysDocValuesFormat(new ES819TSDBDocValuesFormat(compressionMode));
         testMixedIndex(oldCodec, newCodec);
     }
 
     public void testMixedIndexDocValueVersion0ToVersion1() throws Exception {
         var oldCodec = TestUtil.alwaysDocValuesFormat(new TestES819TSDBDocValuesFormatVersion0());
-        var compressionMode = AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode();
+        var compressionMode = TSDBDocValuesTestUtil.randomBinaryCompressionMode();
         var newCodec = TestUtil.alwaysDocValuesFormat(new ES819TSDBDocValuesFormat(compressionMode));
         testMixedIndex(oldCodec, newCodec, this::assertVersion819, this::assertVersion819);
     }
@@ -107,9 +107,7 @@ public class TsdbDocValueBwcTests extends ESTestCase {
             }
         };
         var newCodec = new Elasticsearch93Lucene104Codec() {
-            final DocValuesFormat docValuesFormat = new ES819TSDBDocValuesFormat(
-                AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode()
-            );
+            final DocValuesFormat docValuesFormat = new ES819TSDBDocValuesFormat(TSDBDocValuesTestUtil.randomBinaryCompressionMode());
 
             @Override
             public DocValuesFormat getDocValuesFormatForField(String field) {
@@ -361,9 +359,9 @@ public class TsdbDocValueBwcTests extends ESTestCase {
                             random().nextInt(16, 128),
                             nextOrdinalRangeThreshold.getAsInt(),
                             random().nextBoolean(),
-                            AbstractTSDBDocValuesTestSupport.randomBinaryCompressionMode(),
+                            TSDBDocValuesTestUtil.randomBinaryCompressionMode(),
                             randomBoolean(),
-                            AbstractTSDBDocValuesTestSupport.randomNumericBlockSize()
+                            TSDBDocValuesTestUtil.randomNumericBlockSize()
                         )
                     )
                 );
