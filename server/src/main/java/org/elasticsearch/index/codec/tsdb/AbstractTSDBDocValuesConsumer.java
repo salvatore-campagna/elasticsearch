@@ -242,7 +242,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         writeNumericField(field, producer, null);
     }
 
-    private long[] writeNumericField(
+    private DocValueFieldCountStats writeNumericField(
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
         final OffsetsAccumulator offsetsAccumulator
@@ -251,7 +251,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             .writeField(field, valuesSource, offsetsAccumulator != null ? offsetsAccumulator::addDoc : null, null);
     }
 
-    private long[] writeOrdinalField(
+    private DocValueFieldCountStats writeOrdinalField(
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
         long maxOrd,
@@ -831,7 +831,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
      */
     @FunctionalInterface
     private interface DocValueWriter {
-        long[] write(OffsetsAccumulator accumulator) throws IOException;
+        DocValueFieldCountStats write(OffsetsAccumulator accumulator) throws IOException;
     }
 
     private void writeEntry(final FieldInfo field, final TsdbDocValuesProducer valuesSource, final DocValueWriter docValueWriter)
@@ -857,12 +857,10 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                 }
             }
         } else {
-            long[] stats = docValueWriter.write(null);
-            int numDocsWithField = Math.toIntExact(stats[0]);
-            long numValues = stats[1];
-            assert numValues >= numDocsWithField;
+            DocValueFieldCountStats stats = docValueWriter.write(null);
+            assert stats.numValues() >= stats.numDocsWithField();
 
-            if (numValues > numDocsWithField) {
+            if (stats.numValues() > stats.numDocsWithField()) {
                 long start = data.getFilePointer();
                 meta.writeLong(start);
                 meta.writeVInt(formatConfig.directMonotonicBlockShift());
@@ -870,7 +868,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
                 final DirectMonotonicWriter addressesWriter = DirectMonotonicWriter.getInstance(
                     meta,
                     data,
-                    numDocsWithField + 1L,
+                    stats.numDocsWithField() + 1L,
                     formatConfig.directMonotonicBlockShift()
                 );
                 long addr = 0;

@@ -34,9 +34,9 @@ public interface OrdinalFieldWriter {
      *                              tracking, or {@code null} when offsets are not needed
      * @param sortedFieldObserver receives {@code (docId, ord)} pairs during the doc pass,
      *                            or {@code null} when no observer is attached
-     * @return a two-element array {@code [numDocsWithValue, numValues]}
+     * @return the field's doc value count statistics
      */
-    long[] writeField(
+    DocValueFieldCountStats writeField(
         FieldInfo field,
         TsdbDocValuesProducer valuesSource,
         long maxOrd,

@@ -50,9 +50,9 @@ final class TSDBDocValuesBlockWriter {
      * @param sortedFieldObserver receives {@code (docId, value)} pairs during the doc pass,
      *                            or {@code null} when no observer is attached
      * @param blockEncoder        codec-specific encoder for each value block
-     * @return a two-element array {@code [numDocsWithValue, numValues]}
+     * @return the field's doc value count statistics
      */
-    long[] writeField(
+    DocValueFieldCountStats writeField(
         final NumericWriteContext ctx,
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
@@ -197,7 +197,7 @@ final class TSDBDocValuesBlockWriter {
             IOUtils.close(disiAccumulator);
         }
 
-        return new long[] { numDocsWithValue, numValues };
+        return new DocValueFieldCountStats(numDocsWithValue, numValues);
     }
 
     /**

@@ -42,7 +42,7 @@ public final class TSDBNumericFieldWriter implements NumericFieldWriter {
     }
 
     @Override
-    public long[] writeField(
+    public DocValueFieldCountStats writeField(
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
         final AbstractTSDBDocValuesConsumer.DocValueCountConsumer docValueCountConsumer,

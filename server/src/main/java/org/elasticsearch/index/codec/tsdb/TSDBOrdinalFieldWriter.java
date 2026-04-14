@@ -44,7 +44,7 @@ public final class TSDBOrdinalFieldWriter implements OrdinalFieldWriter {
     }
 
     @Override
-    public long[] writeField(
+    public DocValueFieldCountStats writeField(
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
         long maxOrd,
