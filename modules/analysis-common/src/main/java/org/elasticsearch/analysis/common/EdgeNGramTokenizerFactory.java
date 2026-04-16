@@ -15,6 +15,7 @@ import org.apache.lucene.analysis.ngram.NGramTokenizer;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.analysis.AbstractTokenizerFactory;
 
 import static org.elasticsearch.analysis.common.NGramTokenizerFactory.parseTokenChars;
@@ -29,6 +30,21 @@ public class EdgeNGramTokenizerFactory extends AbstractTokenizerFactory {
         super(name);
         this.minGram = settings.getAsInt("min_gram", NGramTokenizer.DEFAULT_MIN_NGRAM_SIZE);
         this.maxGram = settings.getAsInt("max_gram", NGramTokenizer.DEFAULT_MAX_NGRAM_SIZE);
+        if (indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.EDGE_NGRAM_MAX_DIFF_VALIDATION)) {
+            int maxAllowedNgramDiff = indexSettings.getMaxNgramDiff();
+            int ngramDiff = maxGram - minGram;
+            if (ngramDiff > maxAllowedNgramDiff) {
+                throw new IllegalArgumentException(
+                    "The difference between max_gram and min_gram in EdgeNGram Tokenizer must be less than or equal to: ["
+                        + maxAllowedNgramDiff
+                        + "] but was ["
+                        + ngramDiff
+                        + "]. This limit can be set by changing the ["
+                        + IndexSettings.MAX_NGRAM_DIFF_SETTING.getKey()
+                        + "] index level setting."
+                );
+            }
+        }
         this.matcher = parseTokenChars(settings);
     }
 

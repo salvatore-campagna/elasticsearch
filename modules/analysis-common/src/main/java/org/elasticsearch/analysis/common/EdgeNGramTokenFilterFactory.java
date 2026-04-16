@@ -17,6 +17,7 @@ import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 
@@ -38,6 +39,21 @@ public class EdgeNGramTokenFilterFactory extends AbstractTokenFilterFactory {
         super(name);
         this.minGram = settings.getAsInt("min_gram", 1);
         this.maxGram = settings.getAsInt("max_gram", 2);
+        if (indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.EDGE_NGRAM_MAX_DIFF_VALIDATION)) {
+            int maxAllowedNgramDiff = indexSettings.getMaxNgramDiff();
+            int ngramDiff = maxGram - minGram;
+            if (ngramDiff > maxAllowedNgramDiff) {
+                throw new IllegalArgumentException(
+                    "The difference between max_gram and min_gram in EdgeNGram Tokenizer must be less than or equal to: ["
+                        + maxAllowedNgramDiff
+                        + "] but was ["
+                        + ngramDiff
+                        + "]. This limit can be set by changing the ["
+                        + IndexSettings.MAX_NGRAM_DIFF_SETTING.getKey()
+                        + "] index level setting."
+                );
+            }
+        }
         if (settings.get("side") != null) {
             deprecationLogger.critical(
                 DeprecationCategory.ANALYSIS,

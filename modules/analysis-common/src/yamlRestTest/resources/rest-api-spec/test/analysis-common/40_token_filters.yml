@@ -525,6 +525,9 @@
 
 ---
 "edge_ngram":
+    - skip:
+        cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+        reason: "edge_ngram now enforces max_ngram_diff validation"
     - do:
         indices.create:
           index: test
@@ -550,6 +553,9 @@
     - match:  { tokens.3.token: foobar }
 ---
 "edge_ngram side deprecated":
+  - skip:
+      cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+      reason: "edge_ngram now enforces max_ngram_diff validation"
   - requires:
       cluster_features: "gte_v8.16.0"
       reason: 'side parameter is deprecated since 8.16.0'
@@ -569,6 +575,54 @@
                   min_gram: 3
                   side: front
                   max_gram: 6
+---
+"edge_ngram with max_ngram_diff validation":
+    - requires:
+        cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+        reason: "edge_ngram now enforces max_ngram_diff validation"
+    - do:
+        indices.create:
+          index: test
+          body:
+            settings:
+              index.max_ngram_diff: 3
+              analysis:
+                filter:
+                  my_edge_ngram:
+                    type: edge_ngram
+                    min_gram: 3
+                    max_gram: 6
+    - do:
+        indices.analyze:
+          index: test
+          body:
+            text:      foobar
+            tokenizer: keyword
+            filter:    [my_edge_ngram]
+    - length: { tokens: 4 }
+    - match:  { tokens.0.token: foo }
+    - match:  { tokens.1.token: foob }
+    - match:  { tokens.2.token: fooba }
+    - match:  { tokens.3.token: foobar }
+
+---
+"edge_ngram rejects excessive diff":
+    - requires:
+        cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+        reason: "edge_ngram now enforces max_ngram_diff validation"
+    - do:
+        catch: /The difference between max_gram and min_gram in EdgeNGram Tokenizer must be less than or equal to/
+        indices.create:
+          index: test
+          body:
+            settings:
+              analysis:
+                filter:
+                  my_edge_ngram:
+                    type: edge_ngram
+                    min_gram: 1
+                    max_gram: 10
+
 ---
 "kstem":
     - do:

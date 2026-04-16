@@ -100,6 +100,72 @@ public class EdgeNGramTokenizerTests extends ESTokenStreamTestCase {
         }
     }
 
+    public void testMaxNGramDiffException() throws Exception {
+        final Index index = new Index("test", "_na_");
+        final String name = "engr";
+        final Settings indexSettings = newAnalysisSettingsBuilder().build();
+        IndexSettings indexProperties = IndexSettingsModule.newIndexSettings(index, indexSettings);
+
+        int maxAllowedNgramDiff = indexProperties.getMaxNgramDiff();
+        int minGram = randomIntBetween(1, 5);
+        int ngramDiff = maxAllowedNgramDiff + randomIntBetween(1, 10);
+        int maxGram = minGram + ngramDiff;
+
+        final Settings settings = newAnalysisSettingsBuilder().put("min_gram", minGram).put("max_gram", maxGram).build();
+        IllegalArgumentException ex = expectThrows(
+            IllegalArgumentException.class,
+            () -> new EdgeNGramTokenizerFactory(indexProperties, null, name, settings).create()
+        );
+        assertEquals(
+            "The difference between max_gram and min_gram in EdgeNGram Tokenizer must be less than or equal to: ["
+                + maxAllowedNgramDiff
+                + "] but was ["
+                + ngramDiff
+                + "]. This limit can be set by changing the ["
+                + IndexSettings.MAX_NGRAM_DIFF_SETTING.getKey()
+                + "] index level setting.",
+            ex.getMessage()
+        );
+    }
+
+    public void testMaxNGramDiffWithCustomSetting() throws Exception {
+        final Index index = new Index("test", "_na_");
+        final String name = "engr";
+        int minGram = randomIntBetween(1, 5);
+        int ngramDiff = randomIntBetween(2, 10);
+        int maxGram = minGram + ngramDiff;
+        final Settings indexSettings = newAnalysisSettingsBuilder().put(IndexSettings.MAX_NGRAM_DIFF_SETTING.getKey(), ngramDiff).build();
+
+        final Settings settings = newAnalysisSettingsBuilder().put("min_gram", minGram).put("max_gram", maxGram).build();
+        Tokenizer tokenizer = new EdgeNGramTokenizerFactory(
+            IndexSettingsModule.newIndexSettings(index, indexSettings),
+            null,
+            name,
+            settings
+        ).create();
+        assertNotNull(tokenizer);
+    }
+
+    public void testMaxNGramDiffNotEnforcedForOlderIndices() throws Exception {
+        final Index index = new Index("test", "_na_");
+        final String name = "engr";
+        int minGram = randomIntBetween(1, 5);
+        int maxGram = minGram + randomIntBetween(2, 10);
+        final Settings indexSettings = newAnalysisSettingsBuilder().put(
+            IndexMetadata.SETTING_VERSION_CREATED,
+            IndexVersionUtils.randomPreviousCompatibleVersion(IndexVersions.EDGE_NGRAM_MAX_DIFF_VALIDATION)
+        ).build();
+
+        final Settings settings = newAnalysisSettingsBuilder().put("min_gram", minGram).put("max_gram", maxGram).build();
+        Tokenizer tokenizer = new EdgeNGramTokenizerFactory(
+            IndexSettingsModule.newIndexSettings(index, indexSettings),
+            null,
+            name,
+            settings
+        ).create();
+        assertNotNull(tokenizer);
+    }
+
     public void testCustomTokenChars() throws IOException {
         final Index index = new Index("test", "_na_");
         final String name = "engr";

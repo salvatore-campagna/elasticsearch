@@ -154,6 +154,9 @@
 
 ---
 "edge_ngram":
+    - skip:
+        cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+        reason: "edge_ngram now enforces max_ngram_diff validation"
     - do:
         indices.analyze:
           body:
@@ -205,6 +208,36 @@
     - match:  { detail.tokenizer.name: edge_ngram }
     - match:  { detail.tokenizer.tokens.0.token: f }
     - match:  { detail.tokenizer.tokens.1.token: fo }
+
+---
+"edge_ngram with max_ngram_diff validation":
+    - requires:
+        cluster_features: "analysis.edge_ngram.max_ngram_diff_validation"
+        reason: "edge_ngram now enforces max_ngram_diff validation"
+    - do:
+        indices.analyze:
+          body:
+            text: "foo"
+            explain: true
+            tokenizer:
+              type: edge_ngram
+              min_gram: 1
+              max_gram: 2
+    - length: { detail.tokenizer.tokens: 2 }
+    - match:  { detail.tokenizer.name: __anonymous__edge_ngram }
+    - match:  { detail.tokenizer.tokens.0.token: f }
+    - match:  { detail.tokenizer.tokens.1.token: fo }
+
+    - do:
+        catch: bad_request
+        indices.analyze:
+          body:
+            text: "foo"
+            explain: true
+            tokenizer:
+              type: edge_ngram
+              min_gram: 1
+              max_gram: 3
 
 ---
 "classic":
