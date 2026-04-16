@@ -118,6 +118,18 @@ PUT edge_ngram_custom_example
 ```
 
 
+## Input token limit [analysis-edgengram-tokenfilter-input-token-limit]
+
+To prevent excessive memory usage on large text fields, the `edge_ngram` filter limits the number of input tokens that receive n-gram expansion. This limit is controlled by the [`index.max_ngram_input_token_count`](/reference/elasticsearch/index-settings/index-modules.md#index-max-ngram-input-token-count) setting, which defaults to `10000`.
+
+Once the limit is reached, n-gram tokens for remaining input tokens are discarded. Tokens within the limit retain full n-gram coverage. For example, with a limit of 2 and `edge_ngram(1, 4)` applied to "quick brown fox":
+
+- "quick" produces: `q`, `qu`, `qui`, `quic` (all emitted)
+- "brown" produces: `b`, `br`, `bro`, `brow` (all emitted)
+- "fox" produces nothing (limit reached)
+
+This limit only applies to indices created on or after the version that introduced this feature. Existing indices are not affected.
+
 ## Limitations of the `max_gram` parameter [analysis-edgengram-tokenfilter-max-gram-limits]
 
 The `edge_ngram` filter’s `max_gram` value limits the character length of tokens. When the `edge_ngram` filter is used with an index analyzer, this means search terms longer than the `max_gram` length may not match any indexed terms.

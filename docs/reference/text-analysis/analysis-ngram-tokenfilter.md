@@ -74,6 +74,14 @@ PUT ngram_example
 You can use the [`index.max_ngram_diff`](/reference/elasticsearch/index-settings/index-modules.md#index-max-ngram-diff) index-level setting to control the maximum allowed difference between the `max_gram` and `min_gram` values.
 
 
+## Input token limit [analysis-ngram-tokenfilter-input-token-limit]
+
+To prevent excessive memory usage on large text fields, the `ngram` filter limits the number of input tokens that receive n-gram expansion. This limit is controlled by the [`index.max_ngram_input_token_count`](/reference/elasticsearch/index-settings/index-modules.md#index-max-ngram-input-token-count) setting, which defaults to `10000`.
+
+Once the limit is reached, n-gram tokens for remaining input tokens are discarded. Tokens within the limit retain full n-gram coverage.
+
+This limit only applies to indices created on or after the version that introduced this feature. Existing indices are not affected.
+
 ## Customize [analysis-ngram-tokenfilter-customize]
 
 To customize the `ngram` filter, duplicate it to create the basis for a new custom token filter. You can modify the filter using its configurable parameters.

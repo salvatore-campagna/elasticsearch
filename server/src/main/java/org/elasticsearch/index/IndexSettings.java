@@ -247,6 +247,20 @@ public final class IndexSettings {
     );
 
     /**
+     * Index setting describing the maximum number of input tokens for which an NGram or EdgeNGram
+     * token filter will produce n-gram expansions during indexing. Once this limit is reached,
+     * n-gram tokens for remaining input tokens are discarded. The default value of 10000 is
+     * defensive to prevent excessive memory usage from n-gram token expansion on large text fields.
+     */
+    public static final Setting<Integer> MAX_NGRAM_INPUT_TOKEN_COUNT_SETTING = Setting.intSetting(
+        "index.max_ngram_input_token_count",
+        10000,
+        1,
+        Property.Dynamic,
+        Property.IndexScope
+    );
+
+    /**
      * Index setting describing for ShingleTokenFilter
      * the maximum difference between
      * max_shingle_size and min_shingle_size.
@@ -1156,6 +1170,7 @@ public final class IndexSettings {
     private volatile int maxDocvalueFields;
     private volatile int maxScriptFields;
     private volatile int maxTokenCount;
+    private volatile int maxNgramInputTokenCount;
     private volatile int maxNgramDiff;
     private volatile int maxShingleDiff;
     private volatile DenseVectorFieldMapper.FilterHeuristic hnswFilterHeuristic;
@@ -1353,6 +1368,7 @@ public final class IndexSettings {
         maxDocvalueFields = scopedSettings.get(MAX_DOCVALUE_FIELDS_SEARCH_SETTING);
         maxScriptFields = scopedSettings.get(MAX_SCRIPT_FIELDS_SETTING);
         maxTokenCount = scopedSettings.get(MAX_TOKEN_COUNT_SETTING);
+        maxNgramInputTokenCount = scopedSettings.get(MAX_NGRAM_INPUT_TOKEN_COUNT_SETTING);
         maxNgramDiff = scopedSettings.get(MAX_NGRAM_DIFF_SETTING);
         maxShingleDiff = scopedSettings.get(MAX_SHINGLE_DIFF_SETTING);
         maxRefreshListeners = scopedSettings.get(MAX_REFRESH_LISTENERS_PER_SHARD);
@@ -1483,6 +1499,7 @@ public final class IndexSettings {
         scopedSettings.addSettingsUpdateConsumer(MAX_DOCVALUE_FIELDS_SEARCH_SETTING, this::setMaxDocvalueFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_SCRIPT_FIELDS_SETTING, this::setMaxScriptFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_TOKEN_COUNT_SETTING, this::setMaxTokenCount);
+        scopedSettings.addSettingsUpdateConsumer(MAX_NGRAM_INPUT_TOKEN_COUNT_SETTING, this::setMaxNgramInputTokenCount);
         scopedSettings.addSettingsUpdateConsumer(MAX_NGRAM_DIFF_SETTING, this::setMaxNgramDiff);
         scopedSettings.addSettingsUpdateConsumer(MAX_SHINGLE_DIFF_SETTING, this::setMaxShingleDiff);
         scopedSettings.addSettingsUpdateConsumer(INDEX_WARMER_ENABLED_SETTING, this::setEnableWarmer);
@@ -1861,6 +1878,17 @@ public final class IndexSettings {
 
     private void setMaxTokenCount(int maxTokenCount) {
         this.maxTokenCount = maxTokenCount;
+    }
+
+    /**
+     * Returns the maximum number of input tokens for which n-gram expansion is applied during indexing.
+     */
+    public int getMaxNgramInputTokenCount() {
+        return maxNgramInputTokenCount;
+    }
+
+    private void setMaxNgramInputTokenCount(int maxNgramInputTokenCount) {
+        this.maxNgramInputTokenCount = maxNgramInputTokenCount;
     }
 
     /**

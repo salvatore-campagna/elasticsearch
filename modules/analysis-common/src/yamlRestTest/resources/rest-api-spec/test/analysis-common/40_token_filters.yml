@@ -570,6 +570,73 @@
                   side: front
                   max_gram: 6
 ---
+"edge_ngram input token limit":
+    - requires:
+        cluster_features: "analysis.ngram.token_count_limit"
+        reason: "ngram input token limit added"
+    - do:
+        indices.create:
+          index: test
+          body:
+            settings:
+              index.max_ngram_input_token_count: 2
+              analysis:
+                filter:
+                  my_edge_ngram:
+                    type: edge_ngram
+                    min_gram: 1
+                    max_gram: 2
+                analyzer:
+                  my_analyzer:
+                    tokenizer: standard
+                    filter: [my_edge_ngram]
+    - do:
+        indices.analyze:
+          index: test
+          body:
+            text:      "foo bar baz"
+            analyzer:  my_analyzer
+    - length: { tokens: 4 }
+    - match:  { tokens.0.token: f }
+    - match:  { tokens.1.token: fo }
+    - match:  { tokens.2.token: b }
+    - match:  { tokens.3.token: ba }
+
+---
+"ngram input token limit":
+    - requires:
+        cluster_features: "analysis.ngram.token_count_limit"
+        reason: "ngram input token limit added"
+    - do:
+        indices.create:
+          index: test
+          body:
+            settings:
+              index.max_ngram_input_token_count: 1
+              analysis:
+                filter:
+                  my_ngram:
+                    type: ngram
+                    min_gram: 1
+                    max_gram: 2
+                analyzer:
+                  my_analyzer:
+                    tokenizer: standard
+                    filter: [my_ngram]
+    - do:
+        indices.analyze:
+          index: test
+          body:
+            text:      "foo bar"
+            analyzer:  my_analyzer
+    - length: { tokens: 5 }
+    - match:  { tokens.0.token: f }
+    - match:  { tokens.1.token: fo }
+    - match:  { tokens.2.token: o }
+    - match:  { tokens.3.token: oo }
+    - match:  { tokens.4.token: o }
+
+---
 "kstem":
     - do:
         indices.create:

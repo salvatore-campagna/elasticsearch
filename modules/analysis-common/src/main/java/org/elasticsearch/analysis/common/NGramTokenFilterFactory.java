@@ -14,6 +14,7 @@ import org.apache.lucene.analysis.ngram.NGramTokenFilter;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 
@@ -21,6 +22,8 @@ public class NGramTokenFilterFactory extends AbstractTokenFilterFactory {
     private final int minGram;
     private final int maxGram;
     private final boolean preserveOriginal;
+    private final boolean limitInputTokens;
+    private final int maxNgramInputTokenCount;
     private static final String PRESERVE_ORIG_KEY = "preserve_original";
 
     NGramTokenFilterFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
@@ -41,11 +44,17 @@ public class NGramTokenFilterFactory extends AbstractTokenFilterFactory {
             );
         }
         preserveOriginal = settings.getAsBoolean(PRESERVE_ORIG_KEY, false);
+        this.limitInputTokens = indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.NGRAM_TOKEN_COUNT_LIMIT);
+        this.maxNgramInputTokenCount = indexSettings.getMaxNgramInputTokenCount();
     }
 
     @Override
     public TokenStream create(TokenStream tokenStream) {
-        return new NGramTokenFilter(tokenStream, minGram, maxGram, preserveOriginal);
+        TokenStream result = new NGramTokenFilter(tokenStream, minGram, maxGram, preserveOriginal);
+        if (limitInputTokens) {
+            result = new LimitNGramInputTokensFilter(result, maxNgramInputTokenCount, "ngram");
+        }
+        return result;
     }
 
     @Override

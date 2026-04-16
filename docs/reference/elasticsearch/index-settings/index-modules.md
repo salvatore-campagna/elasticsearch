@@ -194,6 +194,11 @@ $$$index-max-ngram-diff$$$
 `index.max_ngram_diff`
 :   The maximum allowed difference between min_gram and max_gram for NGramTokenizer and NGramTokenFilter. Defaults to `1`.
 
+$$$index-max-ngram-input-token-count$$$
+
+`index.max_ngram_input_token_count`
+:   The maximum number of input tokens for which the [`edge_ngram`](/reference/text-analysis/analysis-edgengram-tokenfilter.md) and [`ngram`](/reference/text-analysis/analysis-ngram-tokenfilter.md) token filters will produce n-gram expansions during indexing. Defaults to `10000`.
+
 $$$index-max-shingle-diff$$$
 
 `index.max_shingle_diff`

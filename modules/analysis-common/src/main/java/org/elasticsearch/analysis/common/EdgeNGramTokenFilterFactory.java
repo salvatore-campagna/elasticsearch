@@ -17,6 +17,7 @@ import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 
@@ -32,6 +33,8 @@ public class EdgeNGramTokenFilterFactory extends AbstractTokenFilterFactory {
     public static final int SIDE_BACK = 2;
     private final int side;
     private final boolean preserveOriginal;
+    private final boolean limitInputTokens;
+    private final int maxNgramInputTokenCount;
     private static final String PRESERVE_ORIG_KEY = "preserve_original";
 
     EdgeNGramTokenFilterFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
@@ -47,6 +50,8 @@ public class EdgeNGramTokenFilterFactory extends AbstractTokenFilterFactory {
         }
         this.side = parseSide(settings.get("side", "front"));
         this.preserveOriginal = settings.getAsBoolean(PRESERVE_ORIG_KEY, false);
+        this.limitInputTokens = indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.NGRAM_TOKEN_COUNT_LIMIT);
+        this.maxNgramInputTokenCount = indexSettings.getMaxNgramInputTokenCount();
     }
 
     static int parseSide(String side) {
@@ -73,6 +78,9 @@ public class EdgeNGramTokenFilterFactory extends AbstractTokenFilterFactory {
             result = new ReverseStringFilter(result);
         }
 
+        if (limitInputTokens) {
+            result = new LimitNGramInputTokensFilter(result, maxNgramInputTokenCount, "edge_ngram");
+        }
         return result;
     }
 

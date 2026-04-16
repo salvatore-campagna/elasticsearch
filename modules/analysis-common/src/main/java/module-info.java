@@ -23,4 +23,5 @@ module org.elasticsearch.analysis.common {
     opens org.elasticsearch.analysis.common to org.elasticsearch.painless.spi; // whitelist resource access
 
     provides org.elasticsearch.painless.spi.PainlessExtension with org.elasticsearch.analysis.common.AnalysisPainlessExtension;
+    provides org.elasticsearch.features.FeatureSpecification with org.elasticsearch.analysis.common.CommonAnalysisFeatures;
 }
