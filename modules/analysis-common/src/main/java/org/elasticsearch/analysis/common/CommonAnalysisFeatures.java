@@ -19,7 +19,7 @@ public class CommonAnalysisFeatures implements FeatureSpecification {
     public static final NodeFeature EDGE_NGRAM_MAX_DIFF_VALIDATION = new NodeFeature("analysis.edge_ngram.max_ngram_diff_validation");
 
     @Override
-    public Set<NodeFeature> getTestFeatures() {
+    public Set<NodeFeature> getFeatures() {
         return Set.of(EDGE_NGRAM_MAX_DIFF_VALIDATION);
     }
 }
