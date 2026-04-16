@@ -229,7 +229,7 @@
     - match:  { detail.tokenizer.tokens.1.token: fo }
 
     - do:
-        catch: bad_request
+        catch: /The difference between max_gram and min_gram in EdgeNGram Tokenizer must be less than or equal to/
         indices.analyze:
           body:
             text: "foo"
