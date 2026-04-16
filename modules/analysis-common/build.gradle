@@ -36,4 +36,7 @@ artifacts {
 tasks.named("yamlRestCompatTestTransform").configure { task ->
   task.replaceValueInMatch("tokens.0.token", "absenț", "romanian")
   task.skipTest("indices.analyze/15_analyze/Custom analyzer is not buildable", "error response changed with #123743")
+  task.skipTest("analysis-common/30_tokenizers/edge_ngram", "edge_ngram now enforces max_ngram_diff validation")
+  task.skipTest("analysis-common/40_token_filters/edge_ngram", "edge_ngram now enforces max_ngram_diff validation")
+  task.skipTest("analysis-common/40_token_filters/edge_ngram side deprecated", "edge_ngram now enforces max_ngram_diff validation")
 }
