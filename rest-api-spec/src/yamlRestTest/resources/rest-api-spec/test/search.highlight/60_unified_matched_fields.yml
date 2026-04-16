@@ -7,6 +7,7 @@ setup:
               index:
                 number_of_shards: 1
                 number_of_replicas: 1
+                max_ngram_diff: 18
               analysis:
                 filter:
                   my_edge_ngram:
