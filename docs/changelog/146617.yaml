@@ -1,0 +1,5 @@
+pr: 146617
+summary: Limit the number of input tokens that receive n-gram expansion during indexing
+area: Search
+type: enhancement
+issues: []
