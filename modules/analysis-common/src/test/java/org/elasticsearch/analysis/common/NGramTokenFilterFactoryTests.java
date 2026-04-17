@@ -67,7 +67,10 @@ public class NGramTokenFilterFactoryTests extends ESTokenStreamTestCase {
         ESTestCase.TestAnalysis analysis = AnalysisTestsHelper.createTestAnalysisFromSettings(
             Settings.builder()
                 .put(Environment.PATH_HOME_SETTING.getKey(), createTempDir().toString())
-                .put("index.version.created", IndexVersionUtils.randomPreviousCompatibleVersion(IndexVersions.NGRAM_TOKEN_COUNT_LIMIT))
+                .put(
+                    "index.version.created",
+                    IndexVersionUtils.randomPreviousCompatibleVersion(IndexVersions.NGRAM_INPUT_TOKEN_COUNT_LIMIT)
+                )
                 .put("index.max_ngram_input_token_count", randomLimit)
                 .put("index.analysis.filter.my_ngram.type", "ngram")
                 .build(),

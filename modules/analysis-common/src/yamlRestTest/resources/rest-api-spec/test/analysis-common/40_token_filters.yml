@@ -572,7 +572,7 @@
 ---
 "edge_ngram input token limit":
     - requires:
-        cluster_features: "analysis.ngram.token_count_limit"
+        cluster_features: "analysis.ngram.input_token_count_limit"
         reason: "ngram input token limit added"
     - do:
         indices.create:
@@ -605,7 +605,7 @@
 ---
 "ngram input token limit":
     - requires:
-        cluster_features: "analysis.ngram.token_count_limit"
+        cluster_features: "analysis.ngram.input_token_count_limit"
         reason: "ngram input token limit added"
     - do:
         indices.create:

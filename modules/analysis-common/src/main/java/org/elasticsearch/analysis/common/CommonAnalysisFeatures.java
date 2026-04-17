@@ -16,10 +16,10 @@ import java.util.Set;
 
 public class CommonAnalysisFeatures implements FeatureSpecification {
 
-    public static final NodeFeature NGRAM_TOKEN_COUNT_LIMIT = new NodeFeature("analysis.ngram.token_count_limit");
+    public static final NodeFeature NGRAM_INPUT_TOKEN_COUNT_LIMIT = new NodeFeature("analysis.ngram.input_token_count_limit");
 
     @Override
     public Set<NodeFeature> getFeatures() {
-        return Set.of(NGRAM_TOKEN_COUNT_LIMIT);
+        return Set.of(NGRAM_INPUT_TOKEN_COUNT_LIMIT);
     }
 }

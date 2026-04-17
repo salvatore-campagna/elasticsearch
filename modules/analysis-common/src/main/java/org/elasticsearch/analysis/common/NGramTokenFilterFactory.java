@@ -44,7 +44,7 @@ public class NGramTokenFilterFactory extends AbstractTokenFilterFactory {
             );
         }
         preserveOriginal = settings.getAsBoolean(PRESERVE_ORIG_KEY, false);
-        this.limitInputTokens = indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.NGRAM_TOKEN_COUNT_LIMIT);
+        this.limitInputTokens = indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.NGRAM_INPUT_TOKEN_COUNT_LIMIT);
         this.maxNgramInputTokenCount = indexSettings.getMaxNgramInputTokenCount();
     }
 
