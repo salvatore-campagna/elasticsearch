@@ -192,6 +192,20 @@ public final class IndexSettings {
     );
 
     /**
+     * Index setting describing the maximum number of tokens that an analyzer can produce per field value
+     * during indexing. When set, tokens beyond this position are silently discarded. The limit is based
+     * on token positions (not raw token count), so n-gram tokens that share a position with their source
+     * token do not count separately toward the limit. Defaults to {@code null} (no limit).
+     */
+    public static final Setting<Integer> MAX_INDEXED_TOKEN_COUNT_SETTING = Setting.intSetting(
+        "index.max_indexed_token_count",
+        Integer.MAX_VALUE,
+        1,
+        Property.Dynamic,
+        Property.IndexScope
+    );
+
+    /**
      * A setting describing the maximum number of characters that will be analyzed for a highlight request.
      * This setting is only applicable when highlighting is requested on a text that was indexed without
      * offsets or term vectors.
@@ -1156,6 +1170,7 @@ public final class IndexSettings {
     private volatile int maxDocvalueFields;
     private volatile int maxScriptFields;
     private volatile int maxTokenCount;
+    private volatile int maxIndexedTokenCount;
     private volatile int maxNgramDiff;
     private volatile int maxShingleDiff;
     private volatile DenseVectorFieldMapper.FilterHeuristic hnswFilterHeuristic;
@@ -1353,6 +1368,7 @@ public final class IndexSettings {
         maxDocvalueFields = scopedSettings.get(MAX_DOCVALUE_FIELDS_SEARCH_SETTING);
         maxScriptFields = scopedSettings.get(MAX_SCRIPT_FIELDS_SETTING);
         maxTokenCount = scopedSettings.get(MAX_TOKEN_COUNT_SETTING);
+        maxIndexedTokenCount = scopedSettings.get(MAX_INDEXED_TOKEN_COUNT_SETTING);
         maxNgramDiff = scopedSettings.get(MAX_NGRAM_DIFF_SETTING);
         maxShingleDiff = scopedSettings.get(MAX_SHINGLE_DIFF_SETTING);
         maxRefreshListeners = scopedSettings.get(MAX_REFRESH_LISTENERS_PER_SHARD);
@@ -1483,6 +1499,7 @@ public final class IndexSettings {
         scopedSettings.addSettingsUpdateConsumer(MAX_DOCVALUE_FIELDS_SEARCH_SETTING, this::setMaxDocvalueFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_SCRIPT_FIELDS_SETTING, this::setMaxScriptFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_TOKEN_COUNT_SETTING, this::setMaxTokenCount);
+        scopedSettings.addSettingsUpdateConsumer(MAX_INDEXED_TOKEN_COUNT_SETTING, this::setMaxIndexedTokenCount);
         scopedSettings.addSettingsUpdateConsumer(MAX_NGRAM_DIFF_SETTING, this::setMaxNgramDiff);
         scopedSettings.addSettingsUpdateConsumer(MAX_SHINGLE_DIFF_SETTING, this::setMaxShingleDiff);
         scopedSettings.addSettingsUpdateConsumer(INDEX_WARMER_ENABLED_SETTING, this::setEnableWarmer);
@@ -1861,6 +1878,18 @@ public final class IndexSettings {
 
     private void setMaxTokenCount(int maxTokenCount) {
         this.maxTokenCount = maxTokenCount;
+    }
+
+    /**
+     * Returns the maximum number of tokens an analyzer can produce per field value during indexing.
+     * Returns {@code Integer.MAX_VALUE} if no limit is configured.
+     */
+    public int getMaxIndexedTokenCount() {
+        return maxIndexedTokenCount;
+    }
+
+    private void setMaxIndexedTokenCount(int maxIndexedTokenCount) {
+        this.maxIndexedTokenCount = maxIndexedTokenCount;
     }
 
     /**

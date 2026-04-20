@@ -82,6 +82,7 @@ import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.VersionType;
+import org.elasticsearch.index.analysis.LimitTokenPositionAnalyzer;
 import org.elasticsearch.index.bulk.stats.BulkOperationListener;
 import org.elasticsearch.index.bulk.stats.BulkStats;
 import org.elasticsearch.index.bulk.stats.ShardBulkStats;
@@ -3903,7 +3904,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         if (mapperService == null) {
             return null;
         }
-        return new DelegatingAnalyzerWrapper(Analyzer.PER_FIELD_REUSE_STRATEGY) {
+        Analyzer analyzer = new DelegatingAnalyzerWrapper(Analyzer.PER_FIELD_REUSE_STRATEGY) {
             @Override
             protected Analyzer getWrappedAnalyzer(String fieldName) {
                 return mapperService.indexAnalyzer(
@@ -3912,6 +3913,11 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                 );
             }
         };
+        final int maxIndexedTokenCount = mapperService.getIndexSettings().getMaxIndexedTokenCount();
+        if (maxIndexedTokenCount < Integer.MAX_VALUE) {
+            analyzer = new LimitTokenPositionAnalyzer(analyzer, maxIndexedTokenCount);
+        }
+        return analyzer;
     }
 
     private EngineConfig newEngineConfig(LongSupplier globalCheckpointSupplier) {

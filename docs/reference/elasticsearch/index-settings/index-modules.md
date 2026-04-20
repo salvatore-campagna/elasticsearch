@@ -205,6 +205,11 @@ $$$index-max-shingle-diff$$$
 `index.analyze.max_token_count`
 :   The maximum number of tokens that can be produced using _analyze API. Defaults to `10000`.
 
+$$$index-max-indexed-token-count$$$
+
+`index.max_indexed_token_count`
+:   The maximum number of token positions that an analyzer can produce per field value during indexing. Tokens beyond this position are silently discarded. Defaults to `Integer.MAX_VALUE` (no limit).
+
 $$$index-max-analyzed-offset$$$
 
 `index.highlight.max_analyzed_offset`
