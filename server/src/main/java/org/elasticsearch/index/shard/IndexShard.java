@@ -3904,7 +3904,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         if (mapperService == null) {
             return null;
         }
-        Analyzer analyzer = new DelegatingAnalyzerWrapper(Analyzer.PER_FIELD_REUSE_STRATEGY) {
+        final Analyzer analyzer = new DelegatingAnalyzerWrapper(Analyzer.PER_FIELD_REUSE_STRATEGY) {
             @Override
             protected Analyzer getWrappedAnalyzer(String fieldName) {
                 return mapperService.indexAnalyzer(
@@ -3913,11 +3913,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                 );
             }
         };
-        final int maxIndexedTokenCount = mapperService.getIndexSettings().getMaxIndexedTokenCount();
-        if (maxIndexedTokenCount < Integer.MAX_VALUE) {
-            analyzer = new LimitTokenPositionAnalyzer(analyzer, maxIndexedTokenCount);
-        }
-        return analyzer;
+        return new LimitTokenPositionAnalyzer(analyzer, mapperService.getIndexSettings().getMaxIndexedTokenCount());
     }
 
     private EngineConfig newEngineConfig(LongSupplier globalCheckpointSupplier) {
