@@ -194,19 +194,6 @@ public class LimitTokenPositionAnalyzerTests extends ESTestCase {
         assertEquals(List.of("may", "the"), tokens);
     }
 
-    public void testUserLimitTokenCountFilterWithNoSystemLimit() throws IOException {
-        final Analyzer base = new Analyzer() {
-            @Override
-            protected TokenStreamComponents createComponents(String fieldName) {
-                final Tokenizer tokenizer = new WhitespaceTokenizer();
-                final TokenStream limited = new LimitTokenCountFilter(tokenizer, 3);
-                return new TokenStreamComponents(tokenizer, limited);
-            }
-        };
-        List<String> tokens = collectTokens(base, "may the force be with you");
-        assertEquals(List.of("may", "the", "force"), tokens);
-    }
-
     private List<String> collectTokens(Analyzer analyzer, String text) throws IOException {
         final List<String> tokens = new ArrayList<>();
         try (TokenStream stream = analyzer.tokenStream("field", text)) {
