@@ -192,10 +192,11 @@ public final class IndexSettings {
     );
 
     /**
-     * Index setting describing the maximum number of tokens that an analyzer can produce per field value
-     * during indexing. When set, tokens beyond this position are silently discarded. The limit is based
-     * on token positions (not raw token count), so n-gram tokens that share a position with their source
-     * token do not count separately toward the limit. Defaults to {@code null} (no limit).
+     * Index setting describing the maximum number of token positions that an analyzer can produce per
+     * field value during indexing. When set, tokens beyond this limit are silently discarded. The limit
+     * is based on token positions (not raw token count), so n-gram tokens that share a position with
+     * their source token do not count separately toward the limit. Defaults to {@code Integer.MAX_VALUE}
+     * (effectively no limit).
      */
     public static final Setting<Integer> MAX_INDEXED_TOKEN_COUNT_SETTING = Setting.intSetting(
         "index.max_indexed_token_count",

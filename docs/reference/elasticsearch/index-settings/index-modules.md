@@ -208,7 +208,7 @@ $$$index-max-shingle-diff$$$
 $$$index-max-indexed-token-count$$$
 
 `index.max_indexed_token_count`
-:   The maximum number of token positions that an analyzer can produce per field value during indexing. Tokens beyond this position are silently discarded. Defaults to `Integer.MAX_VALUE` (no limit).
+:   The maximum number of token positions that an analyzer can produce per field value during indexing. Tokens beyond this limit are silently discarded. Defaults to no limit.
 
 $$$index-max-analyzed-offset$$$
 

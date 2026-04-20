@@ -570,6 +570,59 @@
                   side: front
                   max_gram: 6
 ---
+"max_indexed_token_count limits indexed tokens":
+    - do:
+        indices.create:
+          index: test
+          body:
+            settings:
+              index.max_indexed_token_count: 2
+              analysis:
+                filter:
+                  my_edge_ngram:
+                    type: edge_ngram
+                    min_gram: 1
+                    max_gram: 3
+                analyzer:
+                  my_analyzer:
+                    tokenizer: standard
+                    filter: [my_edge_ngram]
+            mappings:
+              properties:
+                body:
+                  type: text
+                  analyzer: my_analyzer
+                  search_analyzer: standard
+
+    - do:
+        index:
+          index: test
+          id: "1"
+          body: { "body": "may the force" }
+
+    - do:
+        indices.refresh:
+          index: test
+
+    - do:
+        search:
+          index: test
+          body:
+            query:
+              match:
+                body: "ma"
+    - match: { hits.total.value: 1 }
+
+    - do:
+        search:
+          index: test
+          body:
+            query:
+              match:
+                body: "for"
+    - match: { hits.total.value: 0 }
+
+---
 "kstem":
     - do:
         indices.create:
