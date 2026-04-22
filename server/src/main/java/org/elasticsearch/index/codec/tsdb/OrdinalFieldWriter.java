@@ -52,6 +52,7 @@ public interface OrdinalFieldWriter {
     /**
      * Encodes one block of ordinal values.
      */
+    @FunctionalInterface
     interface Encoder {
 
         /**
