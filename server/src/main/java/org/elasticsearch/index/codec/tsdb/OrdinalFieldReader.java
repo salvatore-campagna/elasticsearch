@@ -44,6 +44,7 @@ public interface OrdinalFieldReader {
     /**
      * Decodes one block of ordinal values.
      */
+    @FunctionalInterface
     interface Decoder {
 
         /**
