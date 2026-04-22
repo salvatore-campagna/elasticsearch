@@ -325,9 +325,7 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
                 ? field -> field.number == AbstractTSDBDocValuesProducer.primarySortFieldNumber(state.segmentInfo, state.fieldInfos)
                     ? new PrefixedPartitionsWriter()
                     : SortedFieldObserver.NOOP
-                : SortedFieldObserverFactory.NOOP,
-            new TSDBNumericBlockCodec(),
-            new TSDBOrdinalBlockCodec()
+                : SortedFieldObserverFactory.NOOP
         );
     }
 

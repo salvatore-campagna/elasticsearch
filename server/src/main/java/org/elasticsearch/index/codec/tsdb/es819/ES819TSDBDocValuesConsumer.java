@@ -12,10 +12,10 @@ package org.elasticsearch.index.codec.tsdb.es819;
 import org.apache.lucene.index.SegmentWriteState;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
-import org.elasticsearch.index.codec.tsdb.NumericBlockCodec;
-import org.elasticsearch.index.codec.tsdb.OrdinalBlockCodec;
 import org.elasticsearch.index.codec.tsdb.SortedFieldObserverFactory;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
+import org.elasticsearch.index.codec.tsdb.TSDBNumericBlockCodec;
+import org.elasticsearch.index.codec.tsdb.TSDBOrdinalBlockCodec;
 
 import java.io.IOException;
 
@@ -33,9 +33,7 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
         final String metaExtension,
         final TSDBDocValuesFormatConfig formatConfig,
         final DocOffsetsCodec.Encoder docOffsetsEncoder,
-        final SortedFieldObserverFactory sortedFieldObserverFactory,
-        final NumericBlockCodec numericCodec,
-        final OrdinalBlockCodec ordinalCodec
+        final SortedFieldObserverFactory sortedFieldObserverFactory
     ) throws IOException {
         super(
             state,
@@ -47,8 +45,8 @@ final class ES819TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
             formatConfig,
             docOffsetsEncoder,
             sortedFieldObserverFactory,
-            numericCodec,
-            ordinalCodec
+            new TSDBNumericBlockCodec(),
+            new TSDBOrdinalBlockCodec()
         );
     }
 }
