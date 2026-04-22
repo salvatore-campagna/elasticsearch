@@ -24,8 +24,6 @@ import org.elasticsearch.index.codec.tsdb.SortedFieldObserverFactory;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig.TermsDictConfig;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatConfig.VersionConfig;
-import org.elasticsearch.index.codec.tsdb.TSDBNumericBlockCodec;
-import org.elasticsearch.index.codec.tsdb.TSDBOrdinalBlockCodec;
 
 import java.io.IOException;
 
@@ -338,9 +336,7 @@ public class ES819TSDBDocValuesFormat extends org.apache.lucene.codecs.DocValues
             META_CODEC,
             META_EXTENSION,
             formatConfig,
-            docOffsetsCodec.getDecoder(),
-            new TSDBNumericBlockCodec(),
-            new TSDBOrdinalBlockCodec()
+            docOffsetsCodec.getDecoder()
         );
     }
 }
