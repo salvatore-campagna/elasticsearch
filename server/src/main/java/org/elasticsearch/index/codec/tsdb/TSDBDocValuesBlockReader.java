@@ -33,7 +33,7 @@ final class TSDBDocValuesBlockReader {
      * @param entry             entry to populate with the parsed metadata
      * @param numericBlockShift block shift used to size the per-field block index
      */
-    void readField(final IndexInput meta, final AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift)
+    void readFieldEntry(final IndexInput meta, final AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift)
         throws IOException {
         entry.numValues = meta.readLong();
         entry.numDocsWithField = meta.readInt();

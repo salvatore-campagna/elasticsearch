@@ -17,7 +17,7 @@ import java.io.IOException;
 /**
  * Reads a single numeric field from a segment in two phases.
  *
- * <p>{@link #readField} runs once per field at segment-open time and parses the field metadata
+ * <p>{@link #readFieldEntry} runs once per field at segment-open time and parses the field metadata
  * (value counts, offsets, codec-specific header, DISI metadata) into a
  * {@link AbstractTSDBDocValuesProducer.NumericEntry}. {@link #decoder()} returns the per-block
  * {@link Decoder} that the iteration code drives during value access; the same decoder may be
@@ -32,7 +32,7 @@ public interface NumericFieldReader {
      * @param entry             entry to populate with the parsed metadata
      * @param numericBlockShift block shift used to size the per-field block index
      */
-    void readField(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
+    void readFieldEntry(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
 
     /**
      * Returns the per-block decoder used to decode the field's value blocks.

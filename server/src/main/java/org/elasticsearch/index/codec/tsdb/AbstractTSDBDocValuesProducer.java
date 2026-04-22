@@ -1978,12 +1978,12 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
 
     private void readNumericField(IndexInput meta, NumericEntry entry, int numericBlockShift) throws IOException {
         entry.numericFieldReader = numericCodec.createReader(readContext);
-        entry.numericFieldReader.readField(meta, entry, numericBlockShift);
+        entry.numericFieldReader.readFieldEntry(meta, entry, numericBlockShift);
     }
 
     private void readOrdinalField(IndexInput meta, NumericEntry entry, int numericBlockShift) throws IOException {
         entry.ordinalFieldReader = ordinalCodec.createReader(readContext);
-        entry.ordinalFieldReader.readField(meta, entry, numericBlockShift);
+        entry.ordinalFieldReader.readFieldEntry(meta, entry, numericBlockShift);
     }
 
     private BinaryEntry readBinary(IndexInput meta, int version) throws IOException {

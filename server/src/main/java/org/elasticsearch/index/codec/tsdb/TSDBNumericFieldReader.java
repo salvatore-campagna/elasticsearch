@@ -17,7 +17,7 @@ import java.io.IOException;
  * {@link NumericFieldReader} implementation that reads numeric and sorted-numeric fields
  * from the TSDB block layout.
  *
- * <p>{@link #readField} delegates to the shared metadata parsing in
+ * <p>{@link #readFieldEntry} delegates to the shared metadata parsing in
  * {@link TSDBDocValuesBlockReader}. {@link #decoder()} returns the {@link Decoder} supplied at
  * construction time, which the iteration code drives during value access.
  */
@@ -35,9 +35,9 @@ public final class TSDBNumericFieldReader implements NumericFieldReader {
     }
 
     @Override
-    public void readField(final IndexInput meta, final AbstractTSDBDocValuesProducer.NumericEntry e, int numericBlockShift)
+    public void readFieldEntry(final IndexInput meta, final AbstractTSDBDocValuesProducer.NumericEntry e, int numericBlockShift)
         throws IOException {
-        BLOCK_READER.readField(meta, e, numericBlockShift);
+        BLOCK_READER.readFieldEntry(meta, e, numericBlockShift);
     }
 
     @Override

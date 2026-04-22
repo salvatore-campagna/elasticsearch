@@ -17,7 +17,7 @@ import java.io.IOException;
 /**
  * Reads the ordinal stream of a single sorted or sorted-set field from a segment.
  *
- * <p>{@link #readField} runs once per field at segment-open time and parses the field metadata
+ * <p>{@link #readFieldEntry} runs once per field at segment-open time and parses the field metadata
  * (value counts, block index, offsets, DISI metadata) into a
  * {@link AbstractTSDBDocValuesProducer.NumericEntry}. {@link #decoder()} returns the per-block
  * {@link Decoder} that the iteration code drives during ordinal access; the same decoder may
@@ -32,7 +32,7 @@ public interface OrdinalFieldReader {
      * @param entry             entry to populate with the parsed metadata
      * @param numericBlockShift block shift used to size the per-field block index
      */
-    void readField(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
+    void readFieldEntry(IndexInput meta, AbstractTSDBDocValuesProducer.NumericEntry entry, int numericBlockShift) throws IOException;
 
     /**
      * Returns the per-block decoder used to decode the field's ordinal blocks.
