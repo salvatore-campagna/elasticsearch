@@ -815,8 +815,7 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
     }
 
     /**
-     * Writes one field's doc values and returns a two-element array
-     * {@code [numDocsWithValue, numValues]}.
+     * Writes one field's doc values and returns its {@link DocValueFieldCountStats}.
      *
      * <p>Multi-valued fields need a per-doc address table so the reader can locate each
      * document's values. Building this table requires knowing the value count per document.
