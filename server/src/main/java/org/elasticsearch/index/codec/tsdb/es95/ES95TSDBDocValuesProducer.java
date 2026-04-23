@@ -20,9 +20,8 @@ import java.io.IOException;
 
 /**
  * Doc values producer for the ES95 TSDB format. Delegates all shared wire-format reading logic to
- * {@link AbstractTSDBDocValuesProducer} and injects ES95-specific numeric and
- * ES819-compatible ordinal decoding strategies via {@link NumericBlockCodec} and
- * {@link OrdinalBlockCodec}.
+ * {@link AbstractTSDBDocValuesProducer} with ES95-specific pipeline-based numeric decoding via
+ * {@link NumericBlockCodec} and the shared {@link OrdinalBlockCodec} for ordinals.
  */
 final class ES95TSDBDocValuesProducer extends AbstractTSDBDocValuesProducer {
 

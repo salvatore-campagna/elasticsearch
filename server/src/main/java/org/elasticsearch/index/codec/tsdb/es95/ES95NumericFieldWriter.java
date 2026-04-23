@@ -84,5 +84,6 @@ final class ES95NumericFieldWriter implements NumericFieldWriter {
         return new EncodingPipeline(encoder.newBlockEncoder(), encoder.descriptor());
     }
 
+    /** Pairs the block encoder with its pipeline descriptor so the descriptor can be written to metadata. */
     private record EncodingPipeline(NumericBlockEncoder blockEncoder, PipelineDescriptor descriptor) {}
 }

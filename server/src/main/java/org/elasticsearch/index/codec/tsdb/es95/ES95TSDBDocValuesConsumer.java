@@ -21,8 +21,8 @@ import java.io.IOException;
 
 /**
  * Doc values consumer for the ES95 TSDB format. Delegates all shared wire-format logic
- * to {@link AbstractTSDBDocValuesConsumer} and injects ES95-specific numeric encoding
- * and ES819-compatible ordinal encoding via {@link NumericBlockCodec} and {@link OrdinalBlockCodec}.
+ * to {@link AbstractTSDBDocValuesConsumer} with ES95-specific pipeline-based numeric
+ * encoding via {@link NumericBlockCodec} and the shared {@link OrdinalBlockCodec} for ordinals.
  */
 final class ES95TSDBDocValuesConsumer extends AbstractTSDBDocValuesConsumer {
 

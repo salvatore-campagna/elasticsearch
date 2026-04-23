@@ -61,6 +61,14 @@ final class ES95NumericFieldReader implements NumericFieldReader {
         return fallbackDecoder;
     }
 
+    /**
+     * Default {@link FallbackDecoderFactory} implementation that decodes blocks using
+     * {@link TSDBDocValuesEncoder}, the pre-pipeline encoding used for ordinal-range
+     * and single-ordinal fields.
+     *
+     * @param numericBlockSize number of values per block
+     * @return a decoder backed by {@link TSDBDocValuesEncoder}
+     */
     static Decoder defaultFallbackDecoder(int numericBlockSize) {
         final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
         return (input, values, count) -> encoder.decode(input, values);
