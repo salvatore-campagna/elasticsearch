@@ -32,7 +32,7 @@ public final class TSDBDocValuesBlockReader {
      * additional per-field metadata such as a {@link org.elasticsearch.index.codec.tsdb.pipeline.FieldDescriptor}.
      */
     @FunctionalInterface
-    public interface MetaHeaderReader {
+    public interface FieldMetaReader {
         void read(IndexInput meta) throws IOException;
     }
 
@@ -55,14 +55,14 @@ public final class TSDBDocValuesBlockReader {
      * @param meta              segment metadata input positioned at this field's header
      * @param entry             entry to populate with the parsed metadata
      * @param numericBlockShift block shift used to size the per-field block index
-     * @param metaHeaderReader  optional callback invoked after the block-shift marker to read
+     * @param fieldMetaReader  optional callback invoked after the block-shift marker to read
      *                          additional per-field metadata, or {@code null}
      */
     public void readFieldEntry(
         final IndexInput meta,
         final AbstractTSDBDocValuesProducer.NumericEntry entry,
         int numericBlockShift,
-        final MetaHeaderReader metaHeaderReader
+        final FieldMetaReader fieldMetaReader
     ) throws IOException {
         entry.numValues = meta.readLong();
         entry.numDocsWithField = meta.readInt();
@@ -75,8 +75,8 @@ public final class TSDBDocValuesBlockReader {
                 final int blockShift = meta.readByte();
                 entry.sortedOrdinals = DirectMonotonicReader.loadMeta(meta, numOrds + 1, blockShift);
             } else {
-                if (metaHeaderReader != null) {
-                    metaHeaderReader.read(meta);
+                if (fieldMetaReader != null) {
+                    fieldMetaReader.read(meta);
                 }
                 entry.indexMeta = DirectMonotonicReader.loadMeta(meta, 1 + ((entry.numValues - 1) >>> numericBlockShift), indexBlockShift);
             }

@@ -44,7 +44,7 @@ public final class TSDBDocValuesBlockWriter {
      * additional per-field metadata such as a {@link org.elasticsearch.index.codec.tsdb.pipeline.FieldDescriptor}.
      */
     @FunctionalInterface
-    public interface MetaHeaderWriter {
+    public interface FieldMetaWriter {
         void write() throws IOException;
     }
 
@@ -89,7 +89,7 @@ public final class TSDBDocValuesBlockWriter {
      * @param sortedFieldObserver receives {@code (docId, value)} pairs during the doc pass,
      *                            or {@code null} when no observer is attached
      * @param blockEncoder        codec-specific encoder for each value block
-     * @param metaHeaderWriter    optional callback invoked after the block-shift marker to write
+     * @param fieldMetaWriter    optional callback invoked after the block-shift marker to write
      *                            additional per-field metadata, or {@code null}
      * @return the field's doc value count statistics
      */
@@ -101,7 +101,7 @@ public final class TSDBDocValuesBlockWriter {
         final AbstractTSDBDocValuesConsumer.DocValueCountConsumer docValueCountConsumer,
         final SortedFieldObserver sortedFieldObserver,
         final BlockEncoder blockEncoder,
-        final MetaHeaderWriter metaHeaderWriter
+        final FieldMetaWriter fieldMetaWriter
     ) throws IOException {
         final IndexOutput meta = ctx.meta();
         final IndexOutput data = ctx.data();
@@ -187,8 +187,8 @@ public final class TSDBDocValuesBlockWriter {
                         formatConfig.directMonotonicBlockShift()
                     );
                     meta.writeInt(formatConfig.directMonotonicBlockShift());
-                    if (metaHeaderWriter != null) {
-                        metaHeaderWriter.write();
+                    if (fieldMetaWriter != null) {
+                        fieldMetaWriter.write();
                     }
                     final long[] buffer = new long[blockSize];
                     int bufferSize = 0;
