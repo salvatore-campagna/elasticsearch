@@ -28,7 +28,7 @@ import java.io.IOException;
 /**
  * {@link NumericFieldWriter} implementation for the ES95 TSDB format.
  *
- * <p>{@link #writeField} delegates to {@link TSDBDocValuesBlockWriter} for the shared
+ * <p>{@link #writeFieldEntry} delegates to {@link TSDBDocValuesBlockWriter} for the shared
  * block layout and additionally writes a {@link FieldDescriptor} to the field's metadata
  * header so decoders can reconstruct the pipeline from segment metadata.
  *
@@ -60,14 +60,14 @@ final class ES95NumericFieldWriter implements NumericFieldWriter {
     }
 
     @Override
-    public DocValueFieldCountStats writeField(
+    public DocValueFieldCountStats writeFieldEntry(
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
         final AbstractTSDBDocValuesConsumer.DocValueCountConsumer docValueCountConsumer,
         final SortedFieldObserver sortedFieldObserver
     ) throws IOException {
         final EncodingPipeline state = createPipeline();
-        return BLOCK_WRITER.writeField(
+        return BLOCK_WRITER.writeFieldEntry(
             ctx,
             field,
             valuesSource,

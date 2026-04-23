@@ -63,7 +63,7 @@ public final class TSDBDocValuesBlockWriter {
      * @param blockEncoder        codec-specific encoder for each value block
      * @return the field's doc value count statistics
      */
-    public DocValueFieldCountStats writeField(
+    public DocValueFieldCountStats writeFieldEntry(
         final NumericWriteContext ctx,
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
@@ -72,7 +72,7 @@ public final class TSDBDocValuesBlockWriter {
         final SortedFieldObserver sortedFieldObserver,
         final BlockEncoder blockEncoder
     ) throws IOException {
-        return writeField(ctx, field, valuesSource, maxOrd, docValueCountConsumer, sortedFieldObserver, blockEncoder, null);
+        return writeFieldEntry(ctx, field, valuesSource, maxOrd, docValueCountConsumer, sortedFieldObserver, blockEncoder, null);
     }
 
     /**
@@ -93,7 +93,7 @@ public final class TSDBDocValuesBlockWriter {
      *                            additional per-field metadata, or {@code null}
      * @return the field's doc value count statistics
      */
-    public DocValueFieldCountStats writeField(
+    public DocValueFieldCountStats writeFieldEntry(
         final NumericWriteContext ctx,
         final FieldInfo field,
         final TsdbDocValuesProducer valuesSource,
