@@ -30,7 +30,7 @@ import java.io.IOException;
  * pipeline decoder can be reconstructed at read time.
  *
  * <p>{@link #decoder()} returns a {@link Decoder} backed by the pipeline identified by the
- * {@link FieldDescriptor}, falling back to {@link TSDBDocValuesEncoder} for ordinal-range
+ * {@link FieldDescriptor}, falling back to the provided fallback decoder for ordinal-range
  * and single-ordinal fields that bypass pipeline encoding.
  */
 final class ES95NumericFieldReader implements NumericFieldReader {
@@ -38,12 +38,12 @@ final class ES95NumericFieldReader implements NumericFieldReader {
     private static final TSDBDocValuesBlockReader BLOCK_READER = new TSDBDocValuesBlockReader();
 
     private final NumericCodecFactory numericCodecFactory;
-    private final int numericBlockSize;
+    private final Decoder fallbackDecoder;
     private PipelineDescriptor pipelineDescriptor;
 
-    ES95NumericFieldReader(final NumericCodecFactory numericCodecFactory, int numericBlockSize) {
+    ES95NumericFieldReader(final NumericCodecFactory numericCodecFactory, final Decoder fallbackDecoder) {
         this.numericCodecFactory = numericCodecFactory;
-        this.numericBlockSize = numericBlockSize;
+        this.fallbackDecoder = fallbackDecoder;
     }
 
     @Override
@@ -58,7 +58,11 @@ final class ES95NumericFieldReader implements NumericFieldReader {
             final NumericBlockDecoder blockDecoder = decoder.newBlockDecoder();
             return (input, values, count) -> blockDecoder.decode(values, count, input);
         }
-        final TSDBDocValuesEncoder fallback = new TSDBDocValuesEncoder(numericBlockSize);
-        return (input, values, count) -> fallback.decode(input, values);
+        return fallbackDecoder;
+    }
+
+    static Decoder defaultFallbackDecoder(int numericBlockSize) {
+        final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(numericBlockSize);
+        return (input, values, count) -> encoder.decode(input, values);
     }
 }

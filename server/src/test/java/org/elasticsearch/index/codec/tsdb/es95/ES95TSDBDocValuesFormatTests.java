@@ -30,13 +30,16 @@ import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
 import org.elasticsearch.index.codec.tsdb.ES87TSDBDocValuesFormatTests.TestES87TSDBDocValuesFormat;
 import org.elasticsearch.index.codec.tsdb.es819.ES819TSDBDocValuesFormat;
 import org.elasticsearch.index.codec.tsdb.es819.ES819Version3TSDBDocValuesFormat;
+import org.elasticsearch.index.codec.tsdb.pipeline.numeric.NumericCodecFactory;
 import org.elasticsearch.test.ESTestCase;
 
 import java.io.IOException;
 import java.util.List;
 
+import static org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormat.DEFAULT_SKIP_INDEX_INTERVAL_SIZE;
 import static org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormat.NUMERIC_BLOCK_SHIFT;
 import static org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormat.NUMERIC_LARGE_BLOCK_SHIFT;
+import static org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormat.ORDINAL_RANGE_ENCODING_MIN_DOC_PER_ORDINAL;
 
 public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTests {
 
@@ -301,6 +304,49 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
                         count++;
                     }
                     assertEquals(leaf.reader().maxDoc(), count);
+                }
+            }
+        }
+    }
+
+    public void testPipelinePathIsUsedForNumericFields() throws IOException {
+        final DocValuesFormat format = new ES95TSDBDocValuesFormat(
+            DEFAULT_SKIP_INDEX_INTERVAL_SIZE,
+            ORDINAL_RANGE_ENCODING_MIN_DOC_PER_ORDINAL,
+            true,
+            BinaryDVCompressionMode.COMPRESSED_ZSTD_LEVEL_1,
+            true,
+            ESTestCase.randomBoolean() ? NUMERIC_BLOCK_SHIFT : NUMERIC_LARGE_BLOCK_SHIFT,
+            false,
+            NumericCodecFactory.DEFAULT,
+            blockSize -> (input, values, count) -> {
+                throw new AssertionError("fallback decoder should not be reached for pipeline-encoded numeric fields");
+            }
+        );
+
+        final int numDocs = ESTestCase.randomIntBetween(128, 4096);
+        final long[] expected = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            expected[i] = ESTestCase.randomLong();
+        }
+
+        try (Directory dir = newDirectory()) {
+            try (IndexWriter writer = new IndexWriter(dir, writerConfig(format))) {
+                for (int i = 0; i < numDocs; i++) {
+                    final Document doc = new Document();
+                    doc.add(new NumericDocValuesField("field", expected[i]));
+                    writer.addDocument(doc);
+                }
+            }
+            try (DirectoryReader reader = DirectoryReader.open(dir)) {
+                for (final LeafReaderContext leaf : reader.leaves()) {
+                    final NumericDocValues ndv = leaf.reader().getNumericDocValues("field");
+                    int count = 0;
+                    while (ndv.nextDoc() != NumericDocValues.NO_MORE_DOCS) {
+                        assertEquals(expected[leaf.docBase + count], ndv.longValue());
+                        count++;
+                    }
+                    assertTrue(count > 0);
                 }
             }
         }

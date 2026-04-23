@@ -31,15 +31,21 @@ final class ES95NumericCodec implements NumericBlockCodec {
 
     private final PipelineConfigFactory pipelineConfigFactory;
     private final NumericCodecFactory numericCodecFactory;
+    private final FallbackDecoderFactory fallbackDecoderFactory;
 
-    ES95NumericCodec(final PipelineConfigFactory pipelineConfigFactory, final NumericCodecFactory numericCodecFactory) {
+    ES95NumericCodec(
+        final PipelineConfigFactory pipelineConfigFactory,
+        final NumericCodecFactory numericCodecFactory,
+        final FallbackDecoderFactory fallbackDecoderFactory
+    ) {
         this.pipelineConfigFactory = pipelineConfigFactory;
         this.numericCodecFactory = numericCodecFactory;
+        this.fallbackDecoderFactory = fallbackDecoderFactory;
     }
 
     @Override
     public NumericFieldReader createReader(final NumericReadContext ctx) {
-        return new ES95NumericFieldReader(numericCodecFactory, ctx.blockSize());
+        return new ES95NumericFieldReader(numericCodecFactory, fallbackDecoderFactory.create(ctx.blockSize()));
     }
 
     @Override

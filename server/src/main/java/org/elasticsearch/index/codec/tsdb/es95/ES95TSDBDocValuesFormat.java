@@ -82,6 +82,7 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
     final boolean enableOptimizedMerge;
     final TSDBDocValuesFormatConfig formatConfig;
     final NumericCodecFactory numericCodecFactory;
+    final FallbackDecoderFactory fallbackDecoderFactory;
 
     /** Creates a new ES95 format with default configuration. */
     public ES95TSDBDocValuesFormat() {
@@ -134,7 +135,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
             enablePerBlockCompression,
             numericBlockShift,
             writePrefixPartitions,
-            NumericCodecFactory.DEFAULT
+            NumericCodecFactory.DEFAULT,
+            ES95NumericFieldReader::defaultFallbackDecoder
         );
     }
 
@@ -146,7 +148,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
         boolean enablePerBlockCompression,
         int numericBlockShift,
         boolean writePrefixPartitions,
-        final NumericCodecFactory numericCodecFactory
+        final NumericCodecFactory numericCodecFactory,
+        final FallbackDecoderFactory fallbackDecoderFactory
     ) {
         super(CODEC_NAME);
         assert numericBlockShift == NUMERIC_BLOCK_SHIFT || numericBlockShift == NUMERIC_LARGE_BLOCK_SHIFT : numericBlockShift;
@@ -155,6 +158,7 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
         }
         this.enableOptimizedMerge = enableOptimizedMerge;
         this.numericCodecFactory = numericCodecFactory;
+        this.fallbackDecoderFactory = fallbackDecoderFactory;
         this.formatConfig = new TSDBDocValuesFormatConfig(
             TSDBDocValuesFormatConfig.VERSION_CURRENT,
             TERMS_DICT_CONFIG,
@@ -179,7 +183,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
     public DocValuesConsumer fieldsConsumer(final SegmentWriteState state) throws IOException {
         final NumericBlockCodec numericBlockCodec = new ES95NumericCodec(
             blockSize -> PipelineConfig.forLongs(blockSize).delta().offset().gcd().bitPack(),
-            numericCodecFactory
+            numericCodecFactory,
+            fallbackDecoderFactory
         );
         return new ES95TSDBDocValuesConsumer(
             state,
@@ -206,7 +211,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
     public DocValuesProducer fieldsProducer(final SegmentReadState state) throws IOException {
         final NumericBlockCodec numericBlockCodec = new ES95NumericCodec(
             blockSize -> PipelineConfig.forLongs(blockSize).delta().offset().gcd().bitPack(),
-            numericCodecFactory
+            numericCodecFactory,
+            fallbackDecoderFactory
         );
         return new ES95TSDBDocValuesProducer(
             state,
