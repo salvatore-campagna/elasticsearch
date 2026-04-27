@@ -7,37 +7,33 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-package org.elasticsearch.index.codec.tsdb.es819;
+package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesFormatSingleNodeTests;
 
-import static org.hamcrest.Matchers.startsWith;
+import static org.hamcrest.Matchers.instanceOf;
 
-public class TSDBDocValuesFormatSingleNodeTests extends AbstractTSDBDocValuesFormatSingleNodeTests {
+public class ES95TSDBDocValuesFormatSingleNodeTests extends AbstractTSDBDocValuesFormatSingleNodeTests {
 
     @Override
     protected void assumeCodecSelected() {
-        assumeFalse("ES95 replaces ES819 for TSDB when enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        assumeTrue("ES95 feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
     }
 
     @Override
     protected void assertTSDBDocValuesFormat(final DocValuesFormat format, final String field) {
-        assertThat("field [" + field + "] should use ES819 TSDB doc values format", format.getName(), startsWith("ES819"));
+        assertThat("field [" + field + "] should use ES95 TSDB doc values format", format, instanceOf(ES95TSDBDocValuesFormat.class));
     }
 
     @Override
     protected void assertStandardIndexDocValuesFormat(final DocValuesFormat format, final String field) {
-        assertThat(
-            "field [" + field + "] should use ES819 TSDB doc values format for standard index",
-            format.getName(),
-            startsWith("ES819")
-        );
+        assertFalse("standard index should not use ES95 for field [" + field + "]", format instanceof ES95TSDBDocValuesFormat);
     }
 
     @Override
     protected String expectedCodecName() {
-        return ES819Version3TSDBDocValuesFormat.CODEC_NAME;
+        return ES95TSDBDocValuesFormat.CODEC_NAME;
     }
 }
