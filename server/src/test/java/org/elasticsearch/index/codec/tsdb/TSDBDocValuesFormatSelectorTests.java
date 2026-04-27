@@ -1,0 +1,113 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ */
+
+package org.elasticsearch.index.codec.tsdb;
+
+import org.apache.lucene.codecs.DocValuesFormat;
+import org.elasticsearch.cluster.metadata.IndexMetadata;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.IndexMode;
+import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersion;
+import org.elasticsearch.index.IndexVersions;
+import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.index.IndexVersionUtils;
+
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.startsWith;
+
+public class TSDBDocValuesFormatSelectorTests extends ESTestCase {
+
+    private static final String ES95_CODEC_NAME = "ES95TSDB";
+
+    public void testES95SelectedForCurrentVersionWithFeatureFlag() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, IndexVersion.current()));
+        assertThat(format.getName(), equalTo(ES95_CODEC_NAME));
+    }
+
+    public void testES95SelectedAtExactFeatureFlagVersion() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(
+            indexSettings(IndexMode.TIME_SERIES, IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG)
+        );
+        assertThat(format.getName(), equalTo(ES95_CODEC_NAME));
+    }
+
+    public void testES819SelectedForVersionBeforeFeatureFlag() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final IndexVersion oldVersion = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, oldVersion));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testES819SelectedForLogsdbBeforeFeatureFlag() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final IndexVersion oldVersion = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.LOGSDB, oldVersion));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testES819SelectedForLogsdbEvenWithFeatureFlag() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.LOGSDB, IndexVersion.current()));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testES819SelectedForStandardMode() {
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.STANDARD, IndexVersion.current()));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testES819AlwaysSelectedForTSDBWithOldVersion() {
+        final IndexVersion oldVersion = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, oldVersion));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testES819AlwaysSelectedForLogsdb() {
+        final DocValuesFormat format = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.LOGSDB, IndexVersion.current()));
+        assertThat(format.getName(), startsWith("ES819"));
+    }
+
+    public void testVersionBoundary() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final IndexVersion justBefore = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final IndexVersion exact = IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG;
+
+        assertThat(TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, justBefore)).getName(), startsWith("ES819"));
+        assertThat(TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, exact)).getName(), equalTo(ES95_CODEC_NAME));
+    }
+
+    public void testOldAndNewIndicesGetDifferentCodecs() {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final IndexVersion preES95 = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final IndexVersion postES95 = IndexVersion.current();
+
+        final DocValuesFormat oldFormat = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, preES95));
+        final DocValuesFormat newFormat = TSDBDocValuesFormatSelector.select(indexSettings(IndexMode.TIME_SERIES, postES95));
+
+        assertThat(oldFormat.getName(), startsWith("ES819"));
+        assertThat(newFormat.getName(), equalTo(ES95_CODEC_NAME));
+    }
+
+    private static IndexSettings indexSettings(final IndexMode mode, final IndexVersion version) {
+        final Settings.Builder builder = Settings.builder()
+            .put(IndexMetadata.SETTING_VERSION_CREATED, version)
+            .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+            .put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, 0);
+        if (mode == IndexMode.TIME_SERIES) {
+            builder.put("index.mode", "time_series").put("index.routing_path", "dimension");
+        } else if (mode == IndexMode.LOGSDB) {
+            builder.put("index.mode", "logsdb");
+        }
+        final IndexMetadata metadata = IndexMetadata.builder("test").settings(builder).build();
+        return new IndexSettings(metadata, Settings.EMPTY);
+    }
+}

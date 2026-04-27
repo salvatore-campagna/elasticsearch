@@ -639,6 +639,9 @@ public final class IndexSettings {
 
     public static final FeatureFlag TIME_SERIES_TEMPORALITY_FEATURE_FLAG = new FeatureFlag("time_series_temporality");
 
+    /** Feature flag gating the ES95 pipeline-based TSDB doc values codec. */
+    public static final FeatureFlag ES95_CODEC_FEATURE_FLAG = new FeatureFlag("es95_codec");
+
     /**
      * Defines the name of the field storing the metric temporality.
      * The corresponding field must be a keyword field (or keyword-like, e.g. constant_keyword).

@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.codec;
 
+import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.lucene104.Lucene104PostingsFormat;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
@@ -17,16 +18,20 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexVersion;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.MapperTestUtils;
 import org.elasticsearch.index.codec.bloomfilter.ES87BloomFilterPostingsFormat;
 import org.elasticsearch.index.codec.postings.ES812PostingsFormat;
 import org.elasticsearch.index.codec.tsdb.TSDBSyntheticIdPostingsFormat;
+import org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormat;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.SeqNoFieldMapper;
 import org.elasticsearch.index.mapper.SourceFieldMapper;
 import org.elasticsearch.index.mapper.TimeSeriesIdFieldMapper;
 import org.elasticsearch.index.mapper.TimeSeriesRoutingHashFieldMapper;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.index.IndexVersionUtils;
 
 import java.io.IOException;
 import java.util.function.Function;
@@ -343,6 +348,59 @@ public class PerFieldMapperCodecTests extends ESTestCase {
             settings.put(IndexSettings.USE_ES_812_POSTINGS_FORMAT.getKey(), true);
         }
         MapperService mapperService = MapperTestUtils.newMapperService(xContentRegistry(), createTempDir(), settings.build(), "test");
+        mapperService.merge("type", new CompressedXContent(mapping), MapperService.MergeReason.MAPPING_UPDATE);
+        return new PerFieldFormatSupplier(mapperService, BigArrays.NON_RECYCLING_INSTANCE, null);
+    }
+
+    public void testES95DocValuesFormatUsedForTimeSeriesWithFeatureFlag() throws IOException {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final PerFieldFormatSupplier supplier = createFormatSupplierWithVersion(IndexMode.TIME_SERIES, MAPPING_1, IndexVersion.current());
+        final DocValuesFormat format = supplier.getDocValuesFormatForField("gauge");
+        assertThat(format, instanceOf(ES95TSDBDocValuesFormat.class));
+    }
+
+    public void testES95DocValuesFormatUsedForTimestampField() throws IOException {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final PerFieldFormatSupplier supplier = createFormatSupplierWithVersion(IndexMode.TIME_SERIES, MAPPING_1, IndexVersion.current());
+        final DocValuesFormat format = supplier.getDocValuesFormatForField("@timestamp");
+        assertThat(format, instanceOf(ES95TSDBDocValuesFormat.class));
+    }
+
+    public void testES95DocValuesFormatNotUsedForStandardIndex() throws IOException {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final PerFieldFormatSupplier supplier = createFormatSupplierWithVersion(IndexMode.STANDARD, MAPPING_1, IndexVersion.current());
+        final DocValuesFormat format = supplier.getDocValuesFormatForField("gauge");
+        assertFalse("Expected non-ES95 format", format instanceof ES95TSDBDocValuesFormat);
+    }
+
+    public void testES819UsedForLogsdbEvenWithFeatureFlag() throws IOException {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final PerFieldFormatSupplier supplier = createFormatSupplierWithVersion(IndexMode.LOGSDB, MAPPING_3, IndexVersion.current());
+        final DocValuesFormat format = supplier.getDocValuesFormatForField("hostname");
+        assertFalse("Expected non-ES95 format for LogsDB", format instanceof ES95TSDBDocValuesFormat);
+    }
+
+    public void testES819UsedForOldIndexVersion() throws IOException {
+        assumeTrue("es95_codec feature flag must be enabled", IndexSettings.ES95_CODEC_FEATURE_FLAG.isEnabled());
+        final IndexVersion oldVersion = IndexVersionUtils.getPreviousVersion(IndexVersions.ES95_TSDB_CODEC_FEATURE_FLAG);
+        final PerFieldFormatSupplier supplier = createFormatSupplierWithVersion(IndexMode.TIME_SERIES, MAPPING_1, oldVersion);
+        assertThat(supplier.useTSDBDocValuesFormat("gauge"), is(true));
+        final DocValuesFormat format = supplier.getDocValuesFormatForField("gauge");
+        assertFalse("Expected non-ES95 format", format instanceof ES95TSDBDocValuesFormat);
+    }
+
+    private PerFieldFormatSupplier createFormatSupplierWithVersion(
+        final IndexMode mode,
+        final String mapping,
+        final IndexVersion indexVersion
+    ) throws IOException {
+        final Settings.Builder settings = Settings.builder();
+        settings.put(IndexSettings.MODE.getKey(), mode);
+        settings.put(IndexMetadata.SETTING_VERSION_CREATED, indexVersion);
+        if (mode == IndexMode.TIME_SERIES) {
+            settings.put(IndexMetadata.INDEX_ROUTING_PATH.getKey(), "field");
+        }
+        final MapperService mapperService = MapperTestUtils.newMapperService(xContentRegistry(), createTempDir(), settings.build(), "test");
         mapperService.merge("type", new CompressedXContent(mapping), MapperService.MergeReason.MAPPING_UPDATE);
         return new PerFieldFormatSupplier(mapperService, BigArrays.NON_RECYCLING_INSTANCE, null);
     }
