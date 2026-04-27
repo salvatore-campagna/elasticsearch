@@ -38,6 +38,7 @@ public class TSDBDocValuesFormatSingleNodeTests extends AbstractTSDBDocValuesFor
 
     @Override
     protected String expectedCodecName() {
+        // NOTE: v3 is the latest ES819 version and the one written for current index versions
         return ES819Version3TSDBDocValuesFormat.CODEC_NAME;
     }
 }
