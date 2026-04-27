@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.codec.tsdb;
 
+import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
@@ -18,6 +19,7 @@ import org.elasticsearch.action.admin.indices.flush.FlushRequest;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.routing.TsidBuilder;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.CodecService;
@@ -25,10 +27,12 @@ import org.elasticsearch.index.codec.Elasticsearch93Lucene104Codec;
 import org.elasticsearch.index.codec.LegacyPerFieldMapperCodec;
 import org.elasticsearch.index.codec.perfield.XPerFieldDocValuesFormat;
 import org.elasticsearch.index.engine.Engine;
+import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.test.ESSingleNodeTestCase;
 import org.elasticsearch.xcontent.XContentFactory;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -66,8 +70,8 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
         final Set<String> expectedFields = Set.of("@timestamp", "hostname", "gauge", "_tsid", "_ts_routing_hash");
         assertDocValuesFormat(indexName, expectedFields);
 
-        final var indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final var shard = indexService.getShard(0);
+        final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
+        final IndexShard shard = indexService.getShard(0);
         try (Engine.Searcher searcher = shard.acquireSearcher("test")) {
             assertTrue(PartitionedDocValues.canPartitionByTsidPrefix(searcher));
             PartitionedDocValues.PrefixPartitions partition = null;
@@ -101,8 +105,8 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
         final Set<String> expectedFields = Set.of("@timestamp", "hostname", "gauge", "_tsid", "_ts_routing_hash");
         assertDocValuesFormat(indexName, expectedFields);
 
-        final var indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final var shard = indexService.getShard(0);
+        final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
+        final IndexShard shard = indexService.getShard(0);
         try (Engine.Searcher searcher = shard.acquireSearcher("test")) {
             assertFalse(PartitionedDocValues.canPartitionByTsidPrefix(searcher));
         }
@@ -167,9 +171,9 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
     }
 
     protected DocValuesFormat getDocValuesFormatForField(final String indexName, final String field) {
-        final var indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final var shard = indexService.getShard(0);
-        final var codec = shard.withEngineOrNull(engine -> engine.config().getCodec());
+        final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
+        final IndexShard shard = indexService.getShard(0);
+        final Codec codec = shard.withEngineOrNull(engine -> engine.config().getCodec());
 
         if (codec instanceof Elasticsearch93Lucene104Codec es93104codec) {
             return es93104codec.getDocValuesFormatForField(field);
@@ -191,17 +195,17 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
             assertTSDBDocValuesFormat(format, field);
         }
 
-        final var indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final var shard = indexService.getShard(0);
+        final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
+        final IndexShard shard = indexService.getShard(0);
 
         indicesAdmin().flush(new FlushRequest(indexName).force(true)).actionGet();
         indicesAdmin().prepareRefresh(indexName).get();
 
         try (Engine.Searcher searcher = shard.acquireSearcher("test")) {
-            final var leaves = searcher.getDirectoryReader().leaves();
+            final List<LeafReaderContext> leaves = searcher.getDirectoryReader().leaves();
             assertThat(leaves.size(), greaterThan(0));
 
-            for (var leaf : leaves) {
+            for (LeafReaderContext leaf : leaves) {
                 for (FieldInfo fieldInfo : leaf.reader().getFieldInfos()) {
                     if (fieldInfo.getDocValuesType() == DocValuesType.NONE) {
                         continue;
