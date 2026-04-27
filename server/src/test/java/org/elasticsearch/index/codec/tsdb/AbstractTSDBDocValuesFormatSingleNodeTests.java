@@ -170,9 +170,16 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
         }
     }
 
-    protected DocValuesFormat getDocValuesFormatForField(final String indexName, final String field) {
+    protected IndexShard getShard(final String indexName) {
         final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final IndexShard shard = indexService.getShard(0);
+        return indexService.getShard(0);
+    }
+
+    protected DocValuesFormat getDocValuesFormatForField(final String indexName, final String field) {
+        return getDocValuesFormatForField(getShard(indexName), field);
+    }
+
+    private DocValuesFormat getDocValuesFormatForField(final IndexShard shard, final String field) {
         final Codec codec = shard.withEngineOrNull(engine -> engine.config().getCodec());
 
         if (codec instanceof Elasticsearch93Lucene104Codec es93104codec) {
@@ -190,13 +197,12 @@ public abstract class AbstractTSDBDocValuesFormatSingleNodeTests extends ESSingl
     }
 
     private void assertDocValuesFormat(final String indexName, final Set<String> expectedFields) {
+        final IndexShard shard = getShard(indexName);
+
         for (String field : expectedFields) {
-            final DocValuesFormat format = getDocValuesFormatForField(indexName, field);
+            final DocValuesFormat format = getDocValuesFormatForField(shard, field);
             assertTSDBDocValuesFormat(format, field);
         }
-
-        final IndexService indexService = getInstanceFromNode(IndicesService.class).indexServiceSafe(resolveIndex(indexName));
-        final IndexShard shard = indexService.getShard(0);
 
         indicesAdmin().flush(new FlushRequest(indexName).force(true)).actionGet();
         indicesAdmin().prepareRefresh(indexName).get();
