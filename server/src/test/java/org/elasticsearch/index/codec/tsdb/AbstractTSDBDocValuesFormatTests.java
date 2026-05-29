@@ -26,15 +26,18 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.SortedSetSortField;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.tests.index.BaseDocValuesFormatTestCase;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.NumericUtils;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.common.Randomness;
 import org.elasticsearch.common.logging.LogConfigurator;
@@ -61,6 +64,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.IntToLongFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -69,6 +73,9 @@ import static org.elasticsearch.test.ESTestCase.between;
 import static org.elasticsearch.test.ESTestCase.randomAlphaOfLength;
 import static org.elasticsearch.test.ESTestCase.randomAlphaOfLengthBetween;
 import static org.elasticsearch.test.ESTestCase.randomBoolean;
+import static org.elasticsearch.test.ESTestCase.randomDouble;
+import static org.elasticsearch.test.ESTestCase.randomDoubleBetween;
+import static org.elasticsearch.test.ESTestCase.randomFloat;
 import static org.elasticsearch.test.ESTestCase.randomFrom;
 import static org.elasticsearch.test.ESTestCase.randomIntBetween;
 import static org.elasticsearch.test.ESTestCase.randomLong;
@@ -2717,5 +2724,277 @@ public abstract class AbstractTSDBDocValuesFormatTests extends BaseDocValuesForm
             actual.add(scoreDoc.doc);
         }
         assertEquals("hit set for range [" + lower + "," + upper + "]", expected, actual);
+    }
+
+    public enum FieldKind {
+        NUMERIC,
+        SORTED_NUMERIC
+    }
+
+    public void testLongMonotonicCounterRoundTrip() throws IOException {
+        final long base = randomLongBetween(0L, Long.MAX_VALUE / 2L);
+        final long step = randomLongBetween(1L, 100L);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> base + (long) i * step);
+    }
+
+    public void testLongIntRangeRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = (long) randomIntBetween(Integer.MIN_VALUE, Integer.MAX_VALUE);
+        }
+        assertRoundTrip(numDocs, FieldKind.NUMERIC, i -> values[i]);
+    }
+
+    public void testLongNegativeRangeRoundTrip() throws IOException {
+        final long base = randomLongBetween(Long.MIN_VALUE / 2L, -1L);
+        final long step = randomLongBetween(1L, 100L);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> base + (long) i * step);
+    }
+
+    public void testLongEdgeValuesRoundTrip() throws IOException {
+        final int numDocs = 2048;
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = switch (i) {
+                case 0 -> 0L;
+                case 1 -> 1L;
+                case 2 -> -1L;
+                case 3 -> Long.MIN_VALUE;
+                case 4 -> Long.MAX_VALUE;
+                case 5 -> Integer.MIN_VALUE;
+                case 6 -> Integer.MAX_VALUE;
+                default -> randomLong();
+            };
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testDoubleMonotonicCounterRoundTrip() throws IOException {
+        final double base = randomDoubleBetween(0.0d, 1_000_000_000.0d, true);
+        final double step = randomDoubleBetween(0.000_001d, 0.5d, true);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> Double.doubleToLongBits(base + i * step));
+    }
+
+    public void testDoubleNegativeRangeRoundTrip() throws IOException {
+        final double base = randomDoubleBetween(-1_000_000.0d, -1.0d, true);
+        final double step = randomDoubleBetween(0.001d, 1.0d, true);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> Double.doubleToLongBits(base + i * step));
+    }
+
+    public void testDoubleWideMagnitudeRangeRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = Double.doubleToLongBits(Math.pow(10.0d, randomIntBetween(-300, 300)));
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testDoubleEdgeValuesRoundTrip() throws IOException {
+        final int numDocs = 2048;
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = Double.doubleToLongBits(doubleEdgeValueOrRandom(i));
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testDoubleSortableLongRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = NumericUtils.doubleToSortableLong(randomDouble());
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testFloatMonotonicCounterRoundTrip() throws IOException {
+        final float base = (float) randomDoubleBetween(0.0d, 1_000_000.0d, true);
+        final float step = (float) randomDoubleBetween(0.001d, 1.0d, true);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> floatBits(base + i * step));
+    }
+
+    public void testFloatNegativeRangeRoundTrip() throws IOException {
+        final float base = (float) randomDoubleBetween(-1_000.0d, -1.0d, true);
+        final float step = (float) randomDoubleBetween(0.01d, 1.0d, true);
+        assertRoundTrip(randomNumDocs(), FieldKind.SORTED_NUMERIC, i -> floatBits(base + i * step));
+    }
+
+    public void testFloatWideMagnitudeRangeRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = floatBits((float) Math.pow(10.0f, randomIntBetween(-35, 35)));
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testFloatEdgeValuesRoundTrip() throws IOException {
+        final int numDocs = 2048;
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = floatBits(floatEdgeValueOrRandom(i));
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testFloatSortableIntRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = new long[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            values[i] = NumericUtils.floatToSortableInt(randomFloat()) & 0xFFFFFFFFL;
+        }
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testNumericRandomLongRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomLongs(numDocs);
+        assertRoundTrip(numDocs, FieldKind.NUMERIC, i -> values[i]);
+    }
+
+    public void testSortedNumericRandomLongRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomLongs(numDocs);
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testNumericRandomDoubleRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomDoubleBits(numDocs);
+        assertRoundTrip(numDocs, FieldKind.NUMERIC, i -> values[i]);
+    }
+
+    public void testSortedNumericRandomDoubleRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomDoubleBits(numDocs);
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    public void testNumericRandomFloatRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomFloatBits(numDocs);
+        assertRoundTrip(numDocs, FieldKind.NUMERIC, i -> values[i]);
+    }
+
+    public void testSortedNumericRandomFloatRoundTrip() throws IOException {
+        final int numDocs = randomNumDocs();
+        final long[] values = randomFloatBits(numDocs);
+        assertRoundTrip(numDocs, FieldKind.SORTED_NUMERIC, i -> values[i]);
+    }
+
+    private void assertRoundTrip(final int numDocs, final FieldKind kind, final IntToLongFunction valueFn) throws IOException {
+        final IndexWriterConfig config = new IndexWriterConfig();
+        config.setCodec(getCodec());
+        config.setMergePolicy(new LogByteSizeMergePolicy());
+        try (Directory dir = newDirectory(); IndexWriter writer = new IndexWriter(dir, config)) {
+            for (int i = 0; i < numDocs; i++) {
+                final Document doc = new Document();
+                final long encoded = valueFn.applyAsLong(i);
+                doc.add(
+                    kind == FieldKind.NUMERIC
+                        ? new NumericDocValuesField("value", encoded)
+                        : new SortedNumericDocValuesField("value", encoded)
+                );
+                writer.addDocument(doc);
+            }
+            writer.forceMerge(1);
+            try (DirectoryReader reader = DirectoryReader.open(writer)) {
+                assertEquals(1, reader.leaves().size());
+                final LeafReader leaf = reader.leaves().get(0).reader();
+                if (kind == FieldKind.NUMERIC) {
+                    assertNumericValues(leaf, numDocs, valueFn);
+                } else {
+                    assertSortedNumericValues(leaf, numDocs, valueFn);
+                }
+            }
+        }
+    }
+
+    private static void assertNumericValues(final LeafReader leaf, final int numDocs, final IntToLongFunction valueFn) throws IOException {
+        final NumericDocValues values = leaf.getNumericDocValues("value");
+        assertNotNull(values);
+        for (int i = 0; i < numDocs; i++) {
+            assertTrue("missing doc=" + i, values.advanceExact(i));
+            assertEquals("doc=" + i, valueFn.applyAsLong(i), values.longValue());
+        }
+    }
+
+    private static void assertSortedNumericValues(final LeafReader leaf, final int numDocs, final IntToLongFunction valueFn)
+        throws IOException {
+        final SortedNumericDocValues values = leaf.getSortedNumericDocValues("value");
+        assertNotNull(values);
+        for (int i = 0; i < numDocs; i++) {
+            assertTrue("missing doc=" + i, values.advanceExact(i));
+            assertEquals("doc=" + i, 1, values.docValueCount());
+            assertEquals("doc=" + i, valueFn.applyAsLong(i), values.nextValue());
+        }
+    }
+
+    private static int randomNumDocs() {
+        return randomIntBetween(512, 4096);
+    }
+
+    private static long[] randomLongs(int n) {
+        final long[] values = new long[n];
+        for (int i = 0; i < n; i++) {
+            values[i] = randomLong();
+        }
+        return values;
+    }
+
+    private static long[] randomDoubleBits(int n) {
+        final long[] values = new long[n];
+        for (int i = 0; i < n; i++) {
+            values[i] = Double.doubleToLongBits(randomDouble());
+        }
+        return values;
+    }
+
+    private static long[] randomFloatBits(int n) {
+        final long[] values = new long[n];
+        for (int i = 0; i < n; i++) {
+            values[i] = floatBits(randomFloat());
+        }
+        return values;
+    }
+
+    private static long floatBits(float value) {
+        return Float.floatToRawIntBits(value) & 0xFFFFFFFFL;
+    }
+
+    private static double doubleEdgeValueOrRandom(int i) {
+        return switch (i) {
+            case 0 -> 0.0d;
+            case 1 -> -0.0d;
+            case 2 -> Double.MIN_VALUE;
+            case 3 -> -Double.MIN_VALUE;
+            case 4 -> Double.MIN_NORMAL;
+            case 5 -> -Double.MIN_NORMAL;
+            case 6 -> Double.MAX_VALUE;
+            case 7 -> -Double.MAX_VALUE;
+            case 8 -> Double.POSITIVE_INFINITY;
+            case 9 -> Double.NEGATIVE_INFINITY;
+            case 10 -> Double.NaN;
+            default -> randomDouble();
+        };
+    }
+
+    private static float floatEdgeValueOrRandom(int i) {
+        return switch (i) {
+            case 0 -> 0.0f;
+            case 1 -> -0.0f;
+            case 2 -> Float.MIN_VALUE;
+            case 3 -> -Float.MIN_VALUE;
+            case 4 -> Float.MIN_NORMAL;
+            case 5 -> -Float.MIN_NORMAL;
+            case 6 -> Float.MAX_VALUE;
+            case 7 -> -Float.MAX_VALUE;
+            case 8 -> Float.POSITIVE_INFINITY;
+            case 9 -> Float.NEGATIVE_INFINITY;
+            case 10 -> Float.NaN;
+            default -> randomFloat();
+        };
     }
 }
