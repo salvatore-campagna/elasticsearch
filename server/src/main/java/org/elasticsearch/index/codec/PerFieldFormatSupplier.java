@@ -24,6 +24,7 @@ import org.elasticsearch.index.codec.postings.ES812PostingsFormat;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesFormatSelector;
 import org.elasticsearch.index.codec.tsdb.TSDBSyntheticIdPostingsFormat;
 import org.elasticsearch.index.codec.tsdb.pipeline.FieldContext;
+import org.elasticsearch.index.codec.tsdb.pipeline.MappedFieldType;
 import org.elasticsearch.index.codec.tsdb.pipeline.MetricRole;
 import org.elasticsearch.index.codec.tsdb.pipeline.PipelineDescriptor;
 import org.elasticsearch.index.codec.vectors.es93.ES93HnswVectorsFormat;
@@ -31,6 +32,8 @@ import org.elasticsearch.index.mapper.CompletionFieldMapper;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.IdFieldMapper;
 import org.elasticsearch.index.mapper.IgnoredSourceFieldMapper;
+import org.elasticsearch.index.mapper.IpFieldMapper;
+import org.elasticsearch.index.mapper.KeywordFieldMapper;
 import org.elasticsearch.index.mapper.Mapper;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.NumberFieldMapper;
@@ -237,12 +240,26 @@ public class PerFieldFormatSupplier {
         if (mapper instanceof NumberFieldMapper numberFieldMapper) {
             final PipelineDescriptor.DataType dataType = toPipelineDataType(numberFieldMapper.type());
             final MetricRole metricRole = toMetricRole(numberFieldMapper.fieldType().getMetricType());
-            return new FieldContext(blockSize, fieldName, dataType, metricRole);
+            final MappedFieldType mappedFieldType = toMappedFieldType(numberFieldMapper.type());
+            return new FieldContext(blockSize, fieldName, dataType, metricRole, mappedFieldType, false);
         }
         if (mapper instanceof DateFieldMapper) {
-            return new FieldContext(blockSize, fieldName, PipelineDescriptor.DataType.LONG, null);
+            return new FieldContext(blockSize, fieldName, PipelineDescriptor.DataType.LONG, null, MappedFieldType.DATE, false);
         }
-        return new FieldContext(blockSize, fieldName, null, null);
+        if (mapper instanceof IpFieldMapper ipFieldMapper) {
+            return new FieldContext(blockSize, fieldName, null, null, MappedFieldType.IP, ipFieldMapper.fieldType().isDimension());
+        }
+        if (mapper instanceof KeywordFieldMapper keywordFieldMapper) {
+            return new FieldContext(
+                blockSize,
+                fieldName,
+                null,
+                null,
+                MappedFieldType.KEYWORD,
+                keywordFieldMapper.fieldType().isDimension()
+            );
+        }
+        return new FieldContext(blockSize, fieldName, null, null, null, false);
     }
 
     private static PipelineDescriptor.DataType toPipelineDataType(final NumberFieldMapper.NumberType type) {
@@ -252,6 +269,14 @@ public class PerFieldFormatSupplier {
             case LONG, INTEGER, SHORT, BYTE -> PipelineDescriptor.DataType.LONG;
             case DOUBLE -> PipelineDescriptor.DataType.DOUBLE;
             case FLOAT, HALF_FLOAT -> PipelineDescriptor.DataType.FLOAT;
+        };
+    }
+
+    private static MappedFieldType toMappedFieldType(final NumberFieldMapper.NumberType type) {
+        return switch (type) {
+            case LONG, INTEGER, SHORT, BYTE -> MappedFieldType.LONG;
+            case DOUBLE -> MappedFieldType.DOUBLE;
+            case FLOAT, HALF_FLOAT -> MappedFieldType.FLOAT;
         };
     }
 

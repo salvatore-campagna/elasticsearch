@@ -10,6 +10,7 @@
 package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.tsdb.NumericReadContext;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
 import org.elasticsearch.index.codec.tsdb.OrdinalBlockCodec;
@@ -31,19 +32,25 @@ final class ES95OrdinalCodec implements OrdinalBlockCodec {
     private final PipelineConfigResolver resolver;
     @Nullable
     private final FieldContextResolver fieldContextResolver;
+    private final IndexVersion indexCreatedVersion;
 
-    ES95OrdinalCodec(final PipelineConfigResolver resolver, @Nullable final FieldContextResolver fieldContextResolver) {
+    ES95OrdinalCodec(
+        final PipelineConfigResolver resolver,
+        @Nullable final FieldContextResolver fieldContextResolver,
+        final IndexVersion indexCreatedVersion
+    ) {
         this.resolver = resolver;
         this.fieldContextResolver = fieldContextResolver;
+        this.indexCreatedVersion = indexCreatedVersion;
     }
 
     @Override
     public OrdinalFieldReader createReader(final NumericReadContext ctx) {
-        return new ES95OrdinalFieldReader();
+        return new ES95OrdinalFieldReader(indexCreatedVersion);
     }
 
     @Override
     public OrdinalFieldWriter createWriter(final NumericWriteContext ctx) {
-        return new ES95OrdinalFieldWriter(ctx, resolver, fieldContextResolver);
+        return new ES95OrdinalFieldWriter(ctx, resolver, fieldContextResolver, indexCreatedVersion);
     }
 }

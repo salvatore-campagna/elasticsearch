@@ -11,6 +11,7 @@ package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.tests.util.TestUtil;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.tsdb.AbstractPrefixPartitionTests;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesTestUtil;
 import org.elasticsearch.index.codec.tsdb.pipeline.numeric.NumericCodecFactory;
@@ -32,7 +33,8 @@ public class PrefixPartitionTests extends AbstractPrefixPartitionTests {
                 ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
                 NumericCodecFactory.DEFAULT,
                 ES95NumericFieldReader::defaultFallbackDecoder,
-                null
+                null,
+                IndexVersion.current()
             )
         );
     }

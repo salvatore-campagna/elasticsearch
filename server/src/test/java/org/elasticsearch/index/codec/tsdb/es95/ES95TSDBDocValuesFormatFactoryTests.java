@@ -10,13 +10,14 @@
 package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.apache.lucene.codecs.DocValuesFormat;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.test.ESTestCase;
 
 public class ES95TSDBDocValuesFormatFactoryTests extends ESTestCase {
 
     public void testCreateReturnsFreshInstanceOnEveryCall() {
-        final DocValuesFormat a = ES95TSDBDocValuesFormatFactory.create(true, false, true, null);
-        final DocValuesFormat b = ES95TSDBDocValuesFormatFactory.create(true, false, true, null);
+        final DocValuesFormat a = ES95TSDBDocValuesFormatFactory.create(true, false, true, null, IndexVersion.current());
+        final DocValuesFormat b = ES95TSDBDocValuesFormatFactory.create(true, false, true, null, IndexVersion.current());
         assertNotSame(a, b);
     }
 
@@ -24,7 +25,7 @@ public class ES95TSDBDocValuesFormatFactoryTests extends ESTestCase {
         for (int n = 0; n < 2; n++) {
             for (int b = 0; b < 2; b++) {
                 for (int p = 0; p < 2; p++) {
-                    assertNotNull(ES95TSDBDocValuesFormatFactory.create(n == 1, b == 1, p == 1, null));
+                    assertNotNull(ES95TSDBDocValuesFormatFactory.create(n == 1, b == 1, p == 1, null, IndexVersion.current()));
                 }
             }
         }

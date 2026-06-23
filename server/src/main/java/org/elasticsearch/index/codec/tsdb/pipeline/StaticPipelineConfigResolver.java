@@ -53,8 +53,16 @@ public final class StaticPipelineConfigResolver implements PipelineConfigResolve
     // sort. Kept local to avoid pulling cluster.metadata into the codec package.
     private static final String TIMESTAMP_FIELD_NAME = "@timestamp";
 
+    /** Block size used for {@link MappedFieldType#IP} sorted fields. */
+    public static final int IP_FIELD_BLOCK_SIZE = 2048;
+
+    /** Block size used for {@link MappedFieldType#KEYWORD} sorted fields. */
+    public static final int KEYWORD_FIELD_BLOCK_SIZE = 2048;
+
     private static final PipelineConfig BLOCK_128 = build(128);
     private static final PipelineConfig BLOCK_512 = build(512);
+    private static final PipelineConfig BLOCK_IP_FIELD = build(IP_FIELD_BLOCK_SIZE);
+    private static final PipelineConfig BLOCK_KEYWORD_FIELD = build(KEYWORD_FIELD_BLOCK_SIZE);
     private static final PipelineConfig SPLIT_DELTA_BLOCK_128 = buildSplitDelta(128);
     private static final PipelineConfig SPLIT_DELTA_BLOCK_512 = buildSplitDelta(512);
     private static final PipelineConfig ALP_DOUBLE_GAUGE_BLOCK_128 = buildAlpDoubleGauge(128);
@@ -66,16 +74,23 @@ public final class StaticPipelineConfigResolver implements PipelineConfigResolve
 
     @Override
     public PipelineConfig resolve(final FieldContext context) {
+        if (context.isDimension() && context.mappedFieldType() == MappedFieldType.IP) {
+            return BLOCK_IP_FIELD;
+        }
+        if (context.isDimension() && context.mappedFieldType() == MappedFieldType.KEYWORD) {
+            return BLOCK_KEYWORD_FIELD;
+        }
+        final int blockSize = context.blockSize();
         if (useSplitDelta(context)) {
-            return splitDeltaConfig(context.blockSize());
+            return splitDeltaConfig(blockSize);
         }
         if (useAlpDoubleCounter(context)) {
-            return alpDoubleCounterConfig(context.blockSize());
+            return alpDoubleCounterConfig(blockSize);
         }
         if (useAlpDoubleGauge(context)) {
-            return alpDoubleGaugeConfig(context.blockSize());
+            return alpDoubleGaugeConfig(blockSize);
         }
-        return baselineConfig(context.blockSize());
+        return baselineConfig(blockSize);
     }
 
     private static boolean useSplitDelta(final FieldContext context) {

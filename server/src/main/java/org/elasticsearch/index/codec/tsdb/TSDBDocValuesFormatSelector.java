@@ -51,7 +51,8 @@ public final class TSDBDocValuesFormatSelector {
                 useLargeNumericBlockSize,
                 useLargeBinaryBlockSize,
                 writePartitions,
-                fieldContextResolver
+                fieldContextResolver,
+                indexCreatedVersion
             );
         }
         return ES819TSDBDocValuesFormatFactory.createDocValuesFormat(

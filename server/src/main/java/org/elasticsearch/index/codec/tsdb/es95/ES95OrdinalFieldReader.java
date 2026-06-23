@@ -10,6 +10,8 @@
 package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.apache.lucene.store.IndexInput;
+import org.elasticsearch.index.IndexVersion;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer.NumericEntry;
 import org.elasticsearch.index.codec.tsdb.OrdinalFieldReader;
 import org.elasticsearch.index.codec.tsdb.TSDBDocValuesBlockReader;
@@ -30,12 +32,19 @@ final class ES95OrdinalFieldReader implements OrdinalFieldReader {
 
     private static final TSDBDocValuesBlockReader BLOCK_READER = new TSDBDocValuesBlockReader();
 
+    private final IndexVersion indexCreatedVersion;
+
+    ES95OrdinalFieldReader(final IndexVersion indexCreatedVersion) {
+        this.indexCreatedVersion = indexCreatedVersion;
+    }
+
     @Override
     public void readFieldEntry(final IndexInput meta, final NumericEntry entry, int numericBlockShift) throws IOException {
-        BLOCK_READER.readFieldEntry(meta, entry, numericBlockShift, m -> {
+        final boolean readPerFieldBlockSize = indexCreatedVersion.onOrAfter(IndexVersions.ES95_ORDINAL_PER_FIELD_BLOCK_SIZE);
+        BLOCK_READER.readFieldEntry(meta, entry, numericBlockShift, readPerFieldBlockSize ? m -> {
             final int blockShift = m.readByte() & 0xFF;
             entry.blockSize = 1 << blockShift;
-        });
+        } : null);
     }
 
     @Override

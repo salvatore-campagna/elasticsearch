@@ -29,6 +29,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.tests.util.TestUtil;
 import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.Elasticsearch93Lucene104Codec;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesFormatTests;
 import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
@@ -37,6 +38,8 @@ import org.elasticsearch.index.codec.tsdb.es819.ES819TSDBDocValuesFormat;
 import org.elasticsearch.index.codec.tsdb.es819.ES819Version3TSDBDocValuesFormat;
 import org.elasticsearch.index.codec.tsdb.pipeline.FieldContext;
 import org.elasticsearch.index.codec.tsdb.pipeline.FieldContextResolver;
+import org.elasticsearch.index.codec.tsdb.pipeline.MappedFieldType;
+import org.elasticsearch.index.codec.tsdb.pipeline.StaticPipelineConfigResolver;
 import org.elasticsearch.index.codec.tsdb.pipeline.numeric.NumericCodecFactory;
 import org.elasticsearch.test.ESTestCase;
 
@@ -65,7 +68,8 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
             ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
             NumericCodecFactory.DEFAULT,
             ES95NumericFieldReader::defaultFallbackDecoder,
-            null
+            null,
+            IndexVersion.current()
         );
 
         @Override
@@ -240,7 +244,8 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
                     ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
                     NumericCodecFactory.DEFAULT,
                     ES95NumericFieldReader::defaultFallbackDecoder,
-                    null
+                    null,
+                    IndexVersion.current()
                 );
                 try (IndexWriter writer = new IndexWriter(dir, writerConfig(format))) {
                     for (int i = 0; i < numDocs; i++) {
@@ -325,7 +330,8 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
             blockSize -> (input, values, count) -> {
                 throw new AssertionError("fallback decoder should not be reached for pipeline-encoded numeric fields");
             },
-            null
+            null,
+            IndexVersion.current()
         );
 
         final int numDocs = ESTestCase.randomIntBetween(128, 4096);
@@ -602,6 +608,57 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
         }
     }
 
+    public void testIpSortedFieldRoundTrip() throws IOException {
+        final int numDocs = StaticPipelineConfigResolver.IP_FIELD_BLOCK_SIZE * 2;
+        try (Directory dir = newDirectory()) {
+            try (IndexWriter writer = new IndexWriter(dir, writerConfig(buildMappedFieldTypeFormat()))) {
+                for (int i = 0; i < numDocs; i++) {
+                    final Document doc = new Document();
+                    doc.add(
+                        new SortedDocValuesField(
+                            IP_SORTED_FIELD,
+                            new BytesRef(String.format(Locale.ROOT, "192.168.%03d.%03d", i / 256, i % 256))
+                        )
+                    );
+                    writer.addDocument(doc);
+                }
+            }
+            try (DirectoryReader reader = DirectoryReader.open(dir)) {
+                for (final LeafReaderContext leaf : reader.leaves()) {
+                    assertSortedSequence(leaf, IP_SORTED_FIELD, i -> String.format(Locale.ROOT, "192.168.%03d.%03d", i / 256, i % 256));
+                }
+            }
+        }
+    }
+
+    public void testKeywordSortedSetFieldRoundTrip() throws IOException {
+        final int numDocs = StaticPipelineConfigResolver.KEYWORD_FIELD_BLOCK_SIZE * 2;
+        final int termsPerDoc = 3;
+        try (Directory dir = newDirectory()) {
+            try (IndexWriter writer = new IndexWriter(dir, writerConfig(buildMappedFieldTypeFormat()))) {
+                for (int i = 0; i < numDocs; i++) {
+                    final Document doc = new Document();
+                    for (int j = 0; j < termsPerDoc; j++) {
+                        doc.add(
+                            new SortedSetDocValuesField(KEYWORD_SORTED_FIELD, new BytesRef(String.format(Locale.ROOT, "tag-%05d-%d", i, j)))
+                        );
+                    }
+                    writer.addDocument(doc);
+                }
+            }
+            try (DirectoryReader reader = DirectoryReader.open(dir)) {
+                for (final LeafReaderContext leaf : reader.leaves()) {
+                    assertSortedSetSequence(
+                        leaf,
+                        KEYWORD_SORTED_FIELD,
+                        termsPerDoc,
+                        (i, j) -> String.format(Locale.ROOT, "tag-%05d-%d", i, j)
+                    );
+                }
+            }
+        }
+    }
+
     private void doTestPerFieldOrdinalBlockSizeRoundTrip(int formatShift, int customBlockSize, int numDocs) throws IOException {
         try (Directory dir = newDirectory()) {
             try (IndexWriter writer = new IndexWriter(dir, writerConfig(buildPerFieldBlockSizeFormat(formatShift, customBlockSize)))) {
@@ -820,7 +877,8 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
             ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
             NumericCodecFactory.DEFAULT,
             ES95NumericFieldReader::defaultFallbackDecoder,
-            null
+            null,
+            IndexVersion.current()
         );
     }
 
@@ -834,7 +892,7 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
             } else {
                 blockSize = defaultBlockSize;
             }
-            return new FieldContext(blockSize, fieldName, null, null);
+            return new FieldContext(blockSize, fieldName, null, null, null, false);
         };
         return new ES95TSDBDocValuesFormat(
             DEFAULT_SKIP_INDEX_INTERVAL_SIZE,
@@ -848,7 +906,35 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
             ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
             NumericCodecFactory.DEFAULT,
             ES95NumericFieldReader::defaultFallbackDecoder,
-            perFieldResolver
+            perFieldResolver,
+            IndexVersion.current()
+        );
+    }
+
+    private static DocValuesFormat buildMappedFieldTypeFormat() {
+        final FieldContextResolver resolver = (fieldName, blockSize) -> {
+            if (IP_SORTED_FIELD.equals(fieldName)) {
+                return new FieldContext(blockSize, fieldName, null, null, MappedFieldType.IP, true);
+            }
+            if (KEYWORD_SORTED_FIELD.equals(fieldName)) {
+                return new FieldContext(blockSize, fieldName, null, null, MappedFieldType.KEYWORD, true);
+            }
+            return new FieldContext(blockSize, fieldName, null, null, null, false);
+        };
+        return new ES95TSDBDocValuesFormat(
+            DEFAULT_SKIP_INDEX_INTERVAL_SIZE,
+            ORDINAL_RANGE_ENCODING_MIN_DOC_PER_ORDINAL,
+            true,
+            BinaryDVCompressionMode.COMPRESSED_ZSTD_LEVEL_1,
+            true,
+            NUMERIC_BLOCK_SHIFT,
+            false,
+            ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_BYTES_THRESHOLD_DEFAULT,
+            ES95TSDBDocValuesFormat.BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
+            NumericCodecFactory.DEFAULT,
+            ES95NumericFieldReader::defaultFallbackDecoder,
+            resolver,
+            IndexVersion.current()
         );
     }
 
@@ -860,6 +946,8 @@ public class ES95TSDBDocValuesFormatTests extends AbstractTSDBDocValuesFormatTes
     private static final String CUSTOM_BS_SORTED_FIELD = "custom_bs_sorted";
     private static final String DEFAULT_BS_SORTED_FIELD = "default_bs_sorted";
     private static final String DEMOTED_BS_SORTED_FIELD = "demoted_bs_sorted";
+    private static final String IP_SORTED_FIELD = "ip_dimension";
+    private static final String KEYWORD_SORTED_FIELD = "keyword_dimension";
 
     private static IndexWriterConfig writerConfig(final DocValuesFormat format) {
         final IndexWriterConfig config = new IndexWriterConfig();

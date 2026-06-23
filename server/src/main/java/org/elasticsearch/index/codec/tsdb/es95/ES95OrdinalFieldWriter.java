@@ -12,6 +12,8 @@ package org.elasticsearch.index.codec.tsdb.es95;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.index.IndexVersion;
+import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesConsumer;
 import org.elasticsearch.index.codec.tsdb.DocValueFieldCountStats;
 import org.elasticsearch.index.codec.tsdb.NumericWriteContext;
@@ -38,20 +40,23 @@ import java.io.IOException;
 final class ES95OrdinalFieldWriter implements OrdinalFieldWriter {
 
     private static final TSDBDocValuesBlockWriter BLOCK_WRITER = new TSDBDocValuesBlockWriter();
-    private static final FieldContextResolver NO_INFO_RESOLVER = (name, bs) -> new FieldContext(bs, name, null, null);
+    private static final FieldContextResolver NO_INFO_RESOLVER = (name, bs) -> new FieldContext(bs, name, null, null, null, false);
 
     private final NumericWriteContext ctx;
     private final PipelineConfigResolver resolver;
     private final FieldContextResolver fieldContextResolver;
+    private final IndexVersion indexCreatedVersion;
 
     ES95OrdinalFieldWriter(
         final NumericWriteContext ctx,
         final PipelineConfigResolver resolver,
-        @Nullable final FieldContextResolver fieldContextResolver
+        @Nullable final FieldContextResolver fieldContextResolver,
+        final IndexVersion indexCreatedVersion
     ) {
         this.ctx = ctx;
         this.resolver = resolver;
         this.fieldContextResolver = fieldContextResolver != null ? fieldContextResolver : NO_INFO_RESOLVER;
+        this.indexCreatedVersion = indexCreatedVersion;
     }
 
     @Override
@@ -68,8 +73,10 @@ final class ES95OrdinalFieldWriter implements OrdinalFieldWriter {
         final AbstractTSDBDocValuesConsumer.DocValueCountConsumer docValueCountConsumer,
         final SortedFieldObserver sortedFieldObserver
     ) throws IOException {
-        final FieldContext context = fieldContextResolver.resolve(field.name, ctx.blockSize());
-        final int blockSize = resolver.resolve(context).blockSize();
+        final boolean writePerFieldBlockSize = indexCreatedVersion.onOrAfter(IndexVersions.ES95_ORDINAL_PER_FIELD_BLOCK_SIZE);
+        final int blockSize = writePerFieldBlockSize
+            ? resolver.resolve(fieldContextResolver.resolve(field.name, ctx.blockSize())).blockSize()
+            : ctx.blockSize();
         final int blockShift = Integer.numberOfTrailingZeros(blockSize);
         final int bitsPerOrd = PackedInts.bitsRequired(Math.max(maxOrd - 1, 0));
         final TSDBDocValuesEncoder encoder = new TSDBDocValuesEncoder(blockSize);
@@ -81,7 +88,7 @@ final class ES95OrdinalFieldWriter implements OrdinalFieldWriter {
             docValueCountConsumer,
             sortedFieldObserver,
             (buffer, data) -> encoder.encodeOrdinals(buffer, data, bitsPerOrd),
-            () -> ctx.meta().writeByte((byte) blockShift),
+            writePerFieldBlockSize ? () -> ctx.meta().writeByte((byte) blockShift) : null,
             blockSize
         );
     }

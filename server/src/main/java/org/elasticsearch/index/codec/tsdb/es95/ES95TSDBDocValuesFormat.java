@@ -15,6 +15,7 @@ import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.tsdb.AbstractTSDBDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
 import org.elasticsearch.index.codec.tsdb.DocOffsetsCodec;
@@ -87,6 +88,7 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
     final FallbackDecoderFactory fallbackDecoderFactory;
     @Nullable
     final FieldContextResolver fieldContextResolver;
+    final IndexVersion indexCreatedVersion;
 
     /**
      * Creates a new ES95 format with default configuration.
@@ -106,7 +108,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
             BINARY_DV_BLOCK_COUNT_THRESHOLD_DEFAULT,
             NumericCodecFactory.DEFAULT,
             ES95NumericFieldReader::defaultFallbackDecoder,
-            null
+            null,
+            IndexVersion.current()
         );
     }
 
@@ -122,7 +125,8 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
         int blockCountThreshold,
         final NumericCodecFactory numericCodecFactory,
         final FallbackDecoderFactory fallbackDecoderFactory,
-        @Nullable final FieldContextResolver fieldContextResolver
+        @Nullable final FieldContextResolver fieldContextResolver,
+        final IndexVersion indexCreatedVersion
     ) {
         super(CODEC_NAME);
         assert numericBlockShift >= NUMERIC_BLOCK_SHIFT : numericBlockShift;
@@ -133,6 +137,7 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
         this.numericCodecFactory = numericCodecFactory;
         this.fallbackDecoderFactory = fallbackDecoderFactory;
         this.fieldContextResolver = fieldContextResolver;
+        this.indexCreatedVersion = indexCreatedVersion;
         this.formatConfig = new TSDBDocValuesFormatConfig(
             TSDBDocValuesFormatConfig.VERSION_CURRENT,
             TERMS_DICT_CONFIG,
@@ -161,7 +166,11 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
             numericCodecFactory,
             fallbackDecoderFactory
         );
-        final OrdinalBlockCodec ordinalBlockCodec = new ES95OrdinalCodec(PIPELINE_CONFIG_RESOLVER, fieldContextResolver);
+        final OrdinalBlockCodec ordinalBlockCodec = new ES95OrdinalCodec(
+            PIPELINE_CONFIG_RESOLVER,
+            fieldContextResolver,
+            indexCreatedVersion
+        );
         return new ES95TSDBDocValuesConsumer(
             state,
             enableOptimizedMerge,
@@ -191,7 +200,11 @@ public class ES95TSDBDocValuesFormat extends DocValuesFormat {
             numericCodecFactory,
             fallbackDecoderFactory
         );
-        final OrdinalBlockCodec ordinalBlockCodec = new ES95OrdinalCodec(PIPELINE_CONFIG_RESOLVER, fieldContextResolver);
+        final OrdinalBlockCodec ordinalBlockCodec = new ES95OrdinalCodec(
+            PIPELINE_CONFIG_RESOLVER,
+            fieldContextResolver,
+            indexCreatedVersion
+        );
         return new ES95TSDBDocValuesProducer(
             state,
             DATA_CODEC,

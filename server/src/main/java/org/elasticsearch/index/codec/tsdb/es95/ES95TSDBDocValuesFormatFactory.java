@@ -11,6 +11,7 @@ package org.elasticsearch.index.codec.tsdb.es95;
 
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
 import org.elasticsearch.index.codec.tsdb.pipeline.FieldContextResolver;
 import org.elasticsearch.index.codec.tsdb.pipeline.numeric.NumericCodecFactory;
@@ -49,7 +50,8 @@ public final class ES95TSDBDocValuesFormatFactory {
         boolean useLargeNumericBlockSize,
         boolean useLargeBinaryBlockSize,
         boolean writePartitions,
-        @Nullable final FieldContextResolver fieldContextResolver
+        @Nullable final FieldContextResolver fieldContextResolver,
+        final IndexVersion indexCreatedVersion
     ) {
         final int numericBlockShift = useLargeNumericBlockSize
             ? ES95TSDBDocValuesFormat.NUMERIC_LARGE_BLOCK_SHIFT
@@ -68,7 +70,8 @@ public final class ES95TSDBDocValuesFormatFactory {
             blockCountThreshold,
             NumericCodecFactory.DEFAULT,
             ES95NumericFieldReader::defaultFallbackDecoder,
-            fieldContextResolver
+            fieldContextResolver,
+            indexCreatedVersion
         );
     }
 }
