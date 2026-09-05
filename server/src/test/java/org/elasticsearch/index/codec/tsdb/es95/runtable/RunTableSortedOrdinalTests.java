@@ -44,6 +44,65 @@ public class RunTableSortedOrdinalTests extends ESTestCase {
         }
     }
 
+    public void testRunViewWorkedExample() throws IOException {
+        final int[] perDocOrds = { 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1 };
+        final int valueCount = 3;
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocOrds, valueCount, 0, 0);
+            final RunTableSortedOrdinalReader.Runs runs = openRuns(dir, perDocOrds.length, 0);
+            assertEquals(4, runs.count());
+            assertEquals(valueCount, runs.sentinel());
+            assertRun(runs, 0, 0, 4, 1);
+            assertRun(runs, 1, 4, 4, 2);
+            assertRun(runs, 2, 8, 4, 0);
+            assertRun(runs, 3, 12, 4, 1);
+        }
+    }
+
+    public void testRunViewExposesSentinelRuns() throws IOException {
+        final int valueCount = 3; // sentinel ordinal == 3
+        final int[] perDocOrds = { 1, 1, 3, 3, 3, 2, 2, 0, 0, 3, 1, 1 };
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocOrds, valueCount, 0, 0);
+            final RunTableSortedOrdinalReader.Runs runs = openRuns(dir, perDocOrds.length, 0);
+            // Runs: [1,1][3,3,3][2,2][0,0][3][1,1], two of them sentinel.
+            assertEquals(6, runs.count());
+            assertEquals(valueCount, runs.sentinel());
+            assertRun(runs, 0, 0, 2, 1);
+            assertRun(runs, 1, 2, 3, valueCount);
+            assertRun(runs, 2, 5, 2, 2);
+            assertRun(runs, 3, 7, 2, 0);
+            assertRun(runs, 4, 9, 1, valueCount);
+            assertRun(runs, 5, 10, 2, 1);
+        }
+    }
+
+    public void testRunViewMatchesPerDocReader() throws IOException {
+        final int valueCount = randomIntBetween(1, 50);
+        final int numSeries = randomIntBetween(1, 400);
+        final int[] perDocOrds = randomPiecewiseConstant(numSeries, valueCount);
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocOrds, valueCount, 0, 0);
+            final RunTableSortedOrdinalReader.Runs runs = openRuns(dir, perDocOrds.length, 0);
+            final NumericDocValues perDoc = open(dir, perDocOrds.length, 0);
+            int runStart = 0;
+            for (int run = 0; run < runs.count(); run++) {
+                assertEquals("run " + run + " startDoc", runStart, runs.startDoc(run));
+                final int length = runs.length(run);
+                assertTrue("run " + run + " length must be positive", length > 0);
+                final long ord = runs.ordinal(run);
+                for (int i = 0; i < length; i++) {
+                    final int doc = runStart + i;
+                    assertEquals("doc " + doc, perDocOrds[doc], ord);
+                    assertTrue("doc " + doc, perDoc.advanceExact(doc));
+                    assertEquals("doc " + doc, perDocOrds[doc], (int) perDoc.longValue());
+                }
+                runStart += length;
+            }
+            assertEquals("runs must cover every doc exactly once", perDocOrds.length, runStart);
+        }
+    }
+
     public void testSingleRun() throws IOException {
         final int maxDoc = 500;
         final int[] perDocOrds = new int[maxDoc];
@@ -319,6 +378,20 @@ public class RunTableSortedOrdinalTests extends ESTestCase {
         meta.seek(metaPrefix);
         final RunTableSortedOrdinalReader.Meta parsed = SortedRunTableLayout.readMeta(meta);
         return SortedRunTableLayout.open(parsed, data, maxDoc);
+    }
+
+    private RunTableSortedOrdinalReader.Runs openRuns(Directory dir, int maxDoc, int metaPrefix) throws IOException {
+        final IndexInput meta = dir.openInput("meta.bin", IOContext.DEFAULT);
+        final IndexInput data = dir.openInput("data.bin", IOContext.DEFAULT);
+        meta.seek(metaPrefix);
+        final RunTableSortedOrdinalReader.Meta parsed = SortedRunTableLayout.readMeta(meta);
+        return SortedRunTableLayout.openRuns(parsed, data, maxDoc);
+    }
+
+    private void assertRun(RunTableSortedOrdinalReader.Runs runs, int run, int startDoc, int length, long ordinal) {
+        assertEquals("run " + run + " startDoc", startDoc, runs.startDoc(run));
+        assertEquals("run " + run + " length", length, runs.length(run));
+        assertEquals("run " + run + " ordinal", ordinal, runs.ordinal(run));
     }
 
     private void verifySequential(Directory dir, int[] expected, int metaPrefix) throws IOException {

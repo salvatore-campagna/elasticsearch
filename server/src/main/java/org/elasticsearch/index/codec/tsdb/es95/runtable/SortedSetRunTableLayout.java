@@ -143,16 +143,38 @@ public final class SortedSetRunTableLayout extends AbstractRunTableLayout {
     public static SortedNumericDocValues open(final RunTableSortedSetOrdinalReader.Meta meta, final IndexInput data, int maxDoc)
         throws IOException {
         final DirectMonotonicReader startDocs = openStartDocs(meta.startDocsMeta(), data, meta.dataStart(), meta.startDocsLength());
-        final DirectMonotonicReader setOffsets = DirectMonotonicReader.getInstance(
+        final DirectMonotonicReader setOffsets = openSetOffsets(meta, data);
+        final LongValues ordStream = openOrdStream(meta, data);
+        return RunTableSortedSetOrdinalReader.open(new RunTableCursor(startDocs, meta.numRuns(), maxDoc), setOffsets, ordStream, maxDoc);
+    }
+
+    /**
+     * Builds a run-granularity view over the same columns as {@link #open}, exposing each run's start doc,
+     * length, and ordinal set for segment merge, which reads a source field once per run rather than once per doc.
+     */
+    public static RunTableSortedSetOrdinalReader.Runs openRuns(
+        final RunTableSortedSetOrdinalReader.Meta meta,
+        final IndexInput data,
+        int maxDoc
+    ) throws IOException {
+        final DirectMonotonicReader startDocs = openStartDocs(meta.startDocsMeta(), data, meta.dataStart(), meta.startDocsLength());
+        final DirectMonotonicReader setOffsets = openSetOffsets(meta, data);
+        final LongValues ordStream = openOrdStream(meta, data);
+        return RunTableSortedSetOrdinalReader.openRuns(startDocs, setOffsets, ordStream, meta.numRuns(), maxDoc);
+    }
+
+    private static DirectMonotonicReader openSetOffsets(final RunTableSortedSetOrdinalReader.Meta meta, final IndexInput data)
+        throws IOException {
+        return DirectMonotonicReader.getInstance(
             meta.setOffsetsMeta(),
             data.randomAccessSlice(meta.dataStart() + meta.startDocsLength(), meta.setOffsetsLength())
         );
+    }
 
-        final int totalOrds = meta.totalOrds();
+    private static LongValues openOrdStream(final RunTableSortedSetOrdinalReader.Meta meta, final IndexInput data) throws IOException {
         final int bitsPerOrd = DirectWriter.bitsRequired(Math.max(meta.valueCount() - 1, 0));
         final long ordStreamStart = meta.dataStart() + meta.startDocsLength() + meta.setOffsetsLength();
-        final long ordStreamLength = DirectWriter.bytesRequired(totalOrds, bitsPerOrd);
-        final LongValues ordStream = DirectReader.getInstance(data.randomAccessSlice(ordStreamStart, ordStreamLength), bitsPerOrd);
-        return RunTableSortedSetOrdinalReader.open(new RunTableCursor(startDocs, meta.numRuns(), maxDoc), setOffsets, ordStream, maxDoc);
+        final long ordStreamLength = DirectWriter.bytesRequired(meta.totalOrds(), bitsPerOrd);
+        return DirectReader.getInstance(data.randomAccessSlice(ordStreamStart, ordStreamLength), bitsPerOrd);
     }
 }

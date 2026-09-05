@@ -62,6 +62,76 @@ public final class RunTableSortedOrdinalReader {
         return new RunTableNumericDocValues(cursor, ordsPerRun, maxDoc, sentinel);
     }
 
+    /**
+     * Random-access view of a run-table {@code Sorted} field as runs rather than per doc. Segment merge
+     * reads a source field once per run instead of once per doc, so its ordinal work scales with the
+     * number of runs (series) rather than the number of docs.
+     */
+    public interface Runs {
+
+        /** The number of runs in the field. */
+        int count();
+
+        /** The first doc covered by {@code run}. */
+        int startDoc(int run);
+
+        /** The number of docs covered by {@code run}. */
+        int length(int run);
+
+        /** The ordinal shared by every doc in {@code run}; equals {@link #sentinel()} for an absent run. */
+        long ordinal(int run);
+
+        /** The reserved ordinal marking absent docs, equal to the field cardinality {@code K}. */
+        int sentinel();
+    }
+
+    static Runs openRuns(final LongValues startDocs, final LongValues ordsPerRun, int numRuns, int maxDoc, int valueCount) {
+        return new RunTableRuns(startDocs, ordsPerRun, numRuns, maxDoc, valueCount);
+    }
+
+    private static final class RunTableRuns implements Runs {
+
+        private final LongValues startDocs;
+        private final LongValues ordsPerRun;
+        private final int numRuns;
+        private final int maxDoc;
+        private final int valueCount;
+
+        RunTableRuns(final LongValues startDocs, final LongValues ordsPerRun, int numRuns, int maxDoc, int valueCount) {
+            this.startDocs = startDocs;
+            this.ordsPerRun = ordsPerRun;
+            this.numRuns = numRuns;
+            this.maxDoc = maxDoc;
+            this.valueCount = valueCount;
+        }
+
+        @Override
+        public int count() {
+            return numRuns;
+        }
+
+        @Override
+        public int startDoc(int run) {
+            return (int) startDocs.get(run);
+        }
+
+        @Override
+        public int length(int run) {
+            final int end = run + 1 < numRuns ? (int) startDocs.get(run + 1) : maxDoc;
+            return end - (int) startDocs.get(run);
+        }
+
+        @Override
+        public long ordinal(int run) {
+            return ordsPerRun.get(run);
+        }
+
+        @Override
+        public int sentinel() {
+            return valueCount;
+        }
+    }
+
     private static final class RunTableNumericDocValues extends NumericDocValues {
 
         private final Cursor cursor;

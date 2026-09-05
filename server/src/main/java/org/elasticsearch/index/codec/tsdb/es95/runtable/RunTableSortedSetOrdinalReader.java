@@ -74,6 +74,76 @@ public final class RunTableSortedSetOrdinalReader {
         return new RunTableSortedNumericDocValues(cursor, setOffsets, ordStream, maxDoc);
     }
 
+    /**
+     * Random-access view of a run-table {@code SortedSet} field as runs rather than per doc. Segment merge
+     * reads a source field once per run instead of once per doc, so its ordinal work scales with the number
+     * of runs (series) rather than the number of docs.
+     */
+    public interface Runs {
+
+        /** The number of runs in the field. */
+        int count();
+
+        /** The first doc covered by {@code run}. */
+        int startDoc(int run);
+
+        /** The number of docs covered by {@code run}. */
+        int length(int run);
+
+        /** The number of ordinals in {@code run}'s set; zero for an absent (empty-set) run. */
+        int ordCount(int run);
+
+        /** The {@code index}-th ordinal of {@code run}'s set, ascending within the run. */
+        long ordAt(int run, int index);
+    }
+
+    static Runs openRuns(final LongValues startDocs, final LongValues setOffsets, final LongValues ordStream, int numRuns, int maxDoc) {
+        return new RunTableSetRuns(startDocs, setOffsets, ordStream, numRuns, maxDoc);
+    }
+
+    private static final class RunTableSetRuns implements Runs {
+
+        private final LongValues startDocs;
+        private final LongValues setOffsets;
+        private final LongValues ordStream;
+        private final int numRuns;
+        private final int maxDoc;
+
+        RunTableSetRuns(final LongValues startDocs, final LongValues setOffsets, final LongValues ordStream, int numRuns, int maxDoc) {
+            this.startDocs = startDocs;
+            this.setOffsets = setOffsets;
+            this.ordStream = ordStream;
+            this.numRuns = numRuns;
+            this.maxDoc = maxDoc;
+        }
+
+        @Override
+        public int count() {
+            return numRuns;
+        }
+
+        @Override
+        public int startDoc(int run) {
+            return (int) startDocs.get(run);
+        }
+
+        @Override
+        public int length(int run) {
+            final int end = run + 1 < numRuns ? (int) startDocs.get(run + 1) : maxDoc;
+            return end - (int) startDocs.get(run);
+        }
+
+        @Override
+        public int ordCount(int run) {
+            return (int) (setOffsets.get(run + 1) - setOffsets.get(run));
+        }
+
+        @Override
+        public long ordAt(int run, int index) {
+            return ordStream.get(setOffsets.get(run) + index);
+        }
+    }
+
     private static final class RunTableSortedNumericDocValues extends SortedNumericDocValues {
 
         private final Cursor cursor;

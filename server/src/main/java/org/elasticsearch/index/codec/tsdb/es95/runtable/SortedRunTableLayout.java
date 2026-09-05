@@ -106,11 +106,27 @@ public final class SortedRunTableLayout extends AbstractRunTableLayout {
     public static NumericDocValues open(final RunTableSortedOrdinalReader.Meta meta, final IndexInput data, int maxDoc) throws IOException {
         final int numRuns = meta.numRuns();
         final DirectMonotonicReader startDocs = openStartDocs(meta.startDocsMeta(), data, meta.dataStart(), meta.startDocsLength());
+        final LongValues ordsPerRun = openOrdsPerRun(meta, data, numRuns);
+        return RunTableSortedOrdinalReader.open(new RunTableCursor(startDocs, numRuns, maxDoc), ordsPerRun, maxDoc, meta.valueCount());
+    }
 
+    /**
+     * Builds a run-granularity view over the same columns as {@link #open}, exposing each run's start doc,
+     * length, and ordinal for segment merge, which reads a source field once per run rather than once per doc.
+     */
+    public static RunTableSortedOrdinalReader.Runs openRuns(final RunTableSortedOrdinalReader.Meta meta, final IndexInput data, int maxDoc)
+        throws IOException {
+        final int numRuns = meta.numRuns();
+        final DirectMonotonicReader startDocs = openStartDocs(meta.startDocsMeta(), data, meta.dataStart(), meta.startDocsLength());
+        final LongValues ordsPerRun = openOrdsPerRun(meta, data, numRuns);
+        return RunTableSortedOrdinalReader.openRuns(startDocs, ordsPerRun, numRuns, maxDoc, meta.valueCount());
+    }
+
+    private static LongValues openOrdsPerRun(final RunTableSortedOrdinalReader.Meta meta, final IndexInput data, int numRuns)
+        throws IOException {
         final int bitsPerOrd = DirectWriter.bitsRequired(Math.max(meta.maxOrd(), 0));
         final long ordsStart = meta.dataStart() + meta.startDocsLength();
         final long ordsLength = DirectWriter.bytesRequired(numRuns, bitsPerOrd);
-        final LongValues ordsPerRun = DirectReader.getInstance(data.randomAccessSlice(ordsStart, ordsLength), bitsPerOrd);
-        return RunTableSortedOrdinalReader.open(new RunTableCursor(startDocs, numRuns, maxDoc), ordsPerRun, maxDoc, meta.valueCount());
+        return DirectReader.getInstance(data.randomAccessSlice(ordsStart, ordsLength), bitsPerOrd);
     }
 }

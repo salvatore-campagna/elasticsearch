@@ -59,6 +59,76 @@ public class RunTableSortedSetOrdinalTests extends ESTestCase {
         }
     }
 
+    public void testRunViewWorkedExample() throws IOException {
+        final int[][] perDocSets = {
+            { 2, 3 },
+            { 2, 3 },
+            { 2, 3 },
+            { 2, 3 },
+            { 0, 1, 2 },
+            { 0, 1, 2 },
+            { 0, 1, 2 },
+            { 0, 1, 2 },
+            { 2, 3 },
+            { 2, 3 },
+            { 2, 3 },
+            { 2, 3 } };
+        final int valueCount = 4;
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocSets, valueCount, 0, 0);
+            final RunTableSortedSetOrdinalReader.Runs runs = openRuns(dir, perDocSets.length, 0);
+            assertEquals(3, runs.count());
+            assertRunSet(runs, 0, 0, 4, new int[] { 2, 3 });
+            assertRunSet(runs, 1, 4, 4, new int[] { 0, 1, 2 });
+            assertRunSet(runs, 2, 8, 4, new int[] { 2, 3 });
+        }
+    }
+
+    public void testRunViewExposesEmptySetRuns() throws IOException {
+        final int[][] perDocSets = { {}, { 0, 1 }, { 0, 1 }, { 0, 1 }, {} };
+        final int valueCount = 2;
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocSets, valueCount, 0, 0);
+            final RunTableSortedSetOrdinalReader.Runs runs = openRuns(dir, perDocSets.length, 0);
+            assertEquals(3, runs.count());
+            assertRunSet(runs, 0, 0, 1, new int[0]);
+            assertRunSet(runs, 1, 1, 3, new int[] { 0, 1 });
+            assertRunSet(runs, 2, 4, 1, new int[0]);
+        }
+    }
+
+    public void testRunViewMatchesPerDocReader() throws IOException {
+        final int valueCount = randomIntBetween(1, 50);
+        final int numSeries = randomIntBetween(1, 300);
+        final int[][] perDocSets = randomPiecewiseConstant(numSeries, valueCount);
+        try (Directory dir = new ByteBuffersDirectory()) {
+            write(dir, perDocSets, valueCount, 0, 0);
+            final RunTableSortedSetOrdinalReader.Runs runs = openRuns(dir, perDocSets.length, 0);
+            final SortedNumericDocValues perDoc = open(dir, perDocSets.length, 0);
+            int runStart = 0;
+            for (int run = 0; run < runs.count(); run++) {
+                assertEquals("run " + run + " startDoc", runStart, runs.startDoc(run));
+                final int length = runs.length(run);
+                assertTrue("run " + run + " length must be positive", length > 0);
+                final int ordCount = runs.ordCount(run);
+                for (int i = 0; i < length; i++) {
+                    final int doc = runStart + i;
+                    assertEquals("doc " + doc + " set size", ordCount, perDocSets[doc].length);
+                    final boolean present = ordCount > 0;
+                    assertEquals("doc " + doc + " presence", present, perDoc.advanceExact(doc));
+                    if (present) {
+                        assertEquals("doc " + doc + " count", ordCount, perDoc.docValueCount());
+                    }
+                    for (int o = 0; o < ordCount; o++) {
+                        assertEquals("run " + run + " ord " + o, perDocSets[doc][o], runs.ordAt(run, o));
+                    }
+                }
+                runStart += length;
+            }
+            assertEquals("runs must cover every doc exactly once", perDocSets.length, runStart);
+        }
+    }
+
     public void testSingleRun() throws IOException {
         final int maxDoc = 300;
         final int[][] perDocSets = new int[maxDoc][];
@@ -341,6 +411,23 @@ public class RunTableSortedSetOrdinalTests extends ESTestCase {
         meta.seek(metaPrefix);
         final RunTableSortedSetOrdinalReader.Meta parsed = SortedSetRunTableLayout.readMeta(meta);
         return SortedSetRunTableLayout.open(parsed, data, maxDoc);
+    }
+
+    private RunTableSortedSetOrdinalReader.Runs openRuns(Directory dir, int maxDoc, int metaPrefix) throws IOException {
+        final IndexInput meta = dir.openInput("meta.bin", IOContext.DEFAULT);
+        final IndexInput data = dir.openInput("data.bin", IOContext.DEFAULT);
+        meta.seek(metaPrefix);
+        final RunTableSortedSetOrdinalReader.Meta parsed = SortedSetRunTableLayout.readMeta(meta);
+        return SortedSetRunTableLayout.openRuns(parsed, data, maxDoc);
+    }
+
+    private void assertRunSet(RunTableSortedSetOrdinalReader.Runs runs, int run, int startDoc, int length, int[] expectedOrds) {
+        assertEquals("run " + run + " startDoc", startDoc, runs.startDoc(run));
+        assertEquals("run " + run + " length", length, runs.length(run));
+        assertEquals("run " + run + " ordCount", expectedOrds.length, runs.ordCount(run));
+        for (int i = 0; i < expectedOrds.length; i++) {
+            assertEquals("run " + run + " ord " + i, expectedOrds[i], runs.ordAt(run, i));
+        }
     }
 
     private static void assertDocSet(SortedNumericDocValues dv, int[] expectedSet) throws IOException {
