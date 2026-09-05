@@ -27,8 +27,9 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.benchmark.internal.BenchmarkLogging;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.index.codec.Elasticsearch93Lucene104Codec;
-import org.elasticsearch.index.codec.tsdb.BinaryDVCompressionMode;
-import org.elasticsearch.index.codec.tsdb.es819.ES819Version3TSDBDocValuesFormat;
+import org.elasticsearch.index.codec.tsdb.es95.ES95TSDBDocValuesFormatFactory;
+import org.elasticsearch.index.codec.tsdb.pipeline.FieldContext;
+import org.elasticsearch.index.codec.tsdb.pipeline.FieldContextResolver;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -42,28 +43,32 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
-import org.openjdk.jmh.profile.AsyncProfiler;
-import org.openjdk.jmh.runner.Runner;
-import org.openjdk.jmh.runner.RunnerException;
-import org.openjdk.jmh.runner.options.Options;
-import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 
+/**
+ * Force-merge time of TSDB dimension fields as the number of docs per series grows while the series (distinct
+ * {@code _tsid}) count is held constant. The run-table ordinal codec stores a per-series-constant dimension as one
+ * entry per run, so a run-granularity merge processes {@code O(runs) = O(series)} entries regardless of docs per
+ * series; the per-doc re-encode merge processes {@code O(docs)}.
+ *
+ * <p>The benchmark holds the series count fixed and sweeps {@code docsPerSeries}, so total docs grow linearly.
+ * Run it on the branch before the run-granularity merge (per-doc re-encode) and on the branch with it, both using
+ * the ES95 run-table codec: the before curve grows with docs, the after curve stays roughly flat, bounded by the
+ * series count. The segment carries only the dimension fields plus the {@code _tsid} sort key so the merge signal
+ * is the dimension ordinal merge rather than metric or timestamp encoding.
+ */
 @BenchmarkMode(Mode.SingleShotTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Benchmark)
-@Fork(1)
+@Fork(3)
 @Threads(1)
 @Warmup(iterations = 0)
 @Measurement(iterations = 1)
 public class TSDBDocValuesMergeBenchmark {
-
-    private static final int NUMERIC_LARGE_BLOCK_SHIFT = 9;
 
     static {
         BenchmarkLogging.configure();
@@ -71,185 +76,81 @@ public class TSDBDocValuesMergeBenchmark {
 
     private static final String TIMESTAMP_FIELD = "@timestamp";
     private static final String HOSTNAME_FIELD = "host.name";
+    private static final String HOST_IP_FIELD = "host.ip";
+    private static final String STATE_FIELD = "state";
+    private static final String OS_TYPE_FIELD = "os_type";
+    private static final String DIRECTION_FIELD = "direction";
+    private static final String MAC_FIELD = "host.mac";
+
+    private static final Set<String> DIMENSION_FIELDS = Set.of(
+        HOSTNAME_FIELD,
+        HOST_IP_FIELD,
+        STATE_FIELD,
+        OS_TYPE_FIELD,
+        DIRECTION_FIELD,
+        MAC_FIELD
+    );
+
     private static final long BASE_TIMESTAMP = 1704067200000L;
-
-    public static void main(String[] args) throws RunnerException {
-        final Options options = new OptionsBuilder().include(TSDBDocValuesMergeBenchmark.class.getSimpleName())
-            .addProfiler(AsyncProfiler.class)
-            .build();
-
-        new Runner(options).run();
-    }
+    private static final String[] STATES = { "active", "idle", "wait" };
+    private static final String[] OS_TYPES = { "linux", "macos", "windows" };
+    private static final String[] DIRECTIONS = { "rx", "tx" };
 
     @State(Scope.Benchmark)
-    public static class StateDenseWithoutOptimizeMerge {
+    public static class MergeState {
 
-        @Param("20431204")
-        private int nDocs;
+        @Param({ "1", "4", "16", "64", "256", "1024" })
+        private int docsPerSeries;
 
-        @Param("1000")
-        private int deltaTime;
-
-        @Param("42")
-        private int seed;
+        @Param("2000")
+        private int numSeries;
 
         private Directory directory;
-        private final Supplier<IndexWriterConfig> iwc = () -> createIndexWriterConfig(false);
 
         @Setup(Level.Trial)
         public void setup() throws IOException {
-            directory = FSDirectory.open(Files.createTempDirectory("temp2-"));
-            createIndex(directory, iwc.get(), false, nDocs, deltaTime, seed);
+            directory = FSDirectory.open(Files.createTempDirectory("runtable-merge-"));
+            createIndex(directory, numSeries, docsPerSeries);
         }
-
     }
 
     @Benchmark
-    public void forceMergeDenseWithoutOptimizedMerge(StateDenseWithoutOptimizeMerge state) throws IOException {
-        forceMerge(state.directory, state.iwc.get());
-    }
-
-    @State(Scope.Benchmark)
-    public static class StateDenseWithOptimizeMerge {
-
-        @Param("20431204")
-        private int nDocs;
-
-        @Param("1000")
-        private int deltaTime;
-
-        @Param("42")
-        private int seed;
-
-        private Directory directory;
-        private final Supplier<IndexWriterConfig> iwc = () -> createIndexWriterConfig(true);
-
-        @Setup(Level.Trial)
-        public void setup() throws IOException {
-            directory = FSDirectory.open(Files.createTempDirectory("temp1-"));
-            createIndex(directory, iwc.get(), false, nDocs, deltaTime, seed);
-        }
-
-    }
-
-    @Benchmark
-    public void forceMergeDenseWithOptimizedMerge(StateDenseWithOptimizeMerge state) throws IOException {
-        forceMerge(state.directory, state.iwc.get());
-    }
-
-    @State(Scope.Benchmark)
-    public static class StateSparseWithoutOptimizeMerge {
-
-        @Param("20431204")
-        private int nDocs;
-
-        @Param("1000")
-        private int deltaTime;
-
-        @Param("42")
-        private int seed;
-
-        private Directory directory;
-        private final Supplier<IndexWriterConfig> iwc = () -> createIndexWriterConfig(false);
-
-        @Setup(Level.Trial)
-        public void setup() throws IOException {
-            directory = FSDirectory.open(Files.createTempDirectory("temp4-"));
-            createIndex(directory, iwc.get(), true, nDocs, deltaTime, seed);
-        }
-
-    }
-
-    @Benchmark
-    public void forceMergeSparseWithoutOptimizedMerge(StateSparseWithoutOptimizeMerge state) throws IOException {
-        forceMerge(state.directory, state.iwc.get());
-    }
-
-    @State(Scope.Benchmark)
-    public static class StateSparseWithOptimizeMerge {
-
-        @Param("20431204")
-        private int nDocs;
-
-        @Param("1000")
-        private int deltaTime;
-
-        @Param("42")
-        private int seed;
-
-        private Directory directory;
-        private final Supplier<IndexWriterConfig> iwc = () -> createIndexWriterConfig(true);
-
-        @Setup(Level.Trial)
-        public void setup() throws IOException {
-            directory = FSDirectory.open(Files.createTempDirectory("temp3-"));
-            createIndex(directory, iwc.get(), true, nDocs, deltaTime, seed);
-        }
-
-    }
-
-    @Benchmark
-    public void forceMergeSparseWithOptimizedMerge(StateSparseWithOptimizeMerge state) throws IOException {
-        forceMerge(state.directory, state.iwc.get());
-    }
-
-    private void forceMerge(Directory directory, IndexWriterConfig config) throws IOException {
-        try (var indexWriter = new IndexWriter(directory, config)) {
+    public void forceMerge(MergeState state) throws IOException {
+        try (IndexWriter indexWriter = new IndexWriter(state.directory, indexWriterConfig())) {
             indexWriter.forceMerge(1);
         }
     }
 
-    static void createIndex(Directory directory, IndexWriterConfig iwc, boolean sparse, int nDocs, int deltaTime, int seed)
-        throws IOException {
-        long counter1 = 0;
-        long counter2 = 10_000_000;
-        long[] gauge1Values = new long[] { 2, 4, 6, 8, 10, 12, 14, 16 };
-        long[] gauge2Values = new long[] { -2, -4, -6, -8, -10, -12, -14, -16 };
-        int numHosts = 10000;
-        String[] tags = new String[] { "tag_1", "tag_2", "tag_3", "tag_4", "tag_5", "tag_6", "tag_7", "tag_8" };
-
-        final Random random = new Random(seed);
-        try (var indexWriter = new IndexWriter(directory, iwc)) {
-            for (int i = 0; i < nDocs; i++) {
-                final Document doc = new Document();
-
-                final int batchIndex = i % numHosts;
-                final String hostName = "host-" + batchIndex;
-                // Slightly vary the timestamp in each document
-                final long timestamp = BASE_TIMESTAMP + ((i % numHosts) * deltaTime) + random.nextInt(0, deltaTime);
-
-                doc.add(new SortedDocValuesField(HOSTNAME_FIELD, new BytesRef(hostName)));
-                doc.add(new SortedNumericDocValuesField(TIMESTAMP_FIELD, timestamp));
-                if (sparse == false || random.nextBoolean()) {
-                    doc.add(new SortedNumericDocValuesField("counter_1", counter1++));
-                }
-                if (sparse == false || random.nextBoolean()) {
-                    doc.add(new SortedNumericDocValuesField("counter_2", counter2++));
-                }
-                if (sparse == false || random.nextBoolean()) {
-                    doc.add(new SortedNumericDocValuesField("gauge_1", gauge1Values[i % gauge1Values.length]));
-                }
-                if (sparse == false || random.nextBoolean()) {
-                    doc.add(new SortedNumericDocValuesField("gauge_2", gauge2Values[i % gauge1Values.length]));
-                }
-                if (sparse == false || random.nextBoolean()) {
-                    int numTags = tags.length % (i + 1);
-                    for (int j = 0; j < numTags; j++) {
-                        doc.add(new SortedSetDocValuesField("tags", new BytesRef(tags[j])));
+    private static void createIndex(final Directory directory, int numSeries, int docsPerSeries) throws IOException {
+        final int commitInterval = Math.max(1, numSeries * docsPerSeries / 16);
+        try (IndexWriter indexWriter = new IndexWriter(directory, indexWriterConfig())) {
+            int docCount = 0;
+            for (int series = 0; series < numSeries; series++) {
+                for (int within = 0; within < docsPerSeries; within++) {
+                    final Document doc = new Document();
+                    doc.add(new SortedDocValuesField(HOSTNAME_FIELD, new BytesRef("host-" + series)));
+                    doc.add(new SortedDocValuesField(HOST_IP_FIELD, new BytesRef(ipOf(series))));
+                    doc.add(new SortedDocValuesField(STATE_FIELD, new BytesRef(STATES[series % STATES.length])));
+                    doc.add(new SortedDocValuesField(OS_TYPE_FIELD, new BytesRef(OS_TYPES[series % OS_TYPES.length])));
+                    doc.add(new SortedDocValuesField(DIRECTION_FIELD, new BytesRef(DIRECTIONS[series % DIRECTIONS.length])));
+                    doc.add(new SortedSetDocValuesField(MAC_FIELD, new BytesRef("mac-" + (series % 4))));
+                    doc.add(new SortedSetDocValuesField(MAC_FIELD, new BytesRef("mac-" + ((series % 4) + 4))));
+                    doc.add(new SortedNumericDocValuesField(TIMESTAMP_FIELD, BASE_TIMESTAMP + within));
+                    indexWriter.addDocument(doc);
+                    if (++docCount % commitInterval == 0) {
+                        indexWriter.commit();
                     }
-                }
-                indexWriter.addDocument(doc);
-
-                if (i % 10000 == 0) {
-                    indexWriter.commit();
                 }
             }
         }
     }
 
-    private static IndexWriterConfig createIndexWriterConfig(boolean optimizedMergeEnabled) {
-        var config = new IndexWriterConfig(new StandardAnalyzer());
-        // NOTE: index sort config matching LogsDB's sort order
+    private static String ipOf(int series) {
+        return "10." + (series >> 16 & 0xFF) + "." + (series >> 8 & 0xFF) + "." + (series & 0xFF);
+    }
+
+    private static IndexWriterConfig indexWriterConfig() {
+        final IndexWriterConfig config = new IndexWriterConfig(new StandardAnalyzer());
         config.setIndexSort(
             new Sort(
                 new SortField(HOSTNAME_FIELD, SortField.Type.STRING, false),
@@ -258,15 +159,16 @@ public class TSDBDocValuesMergeBenchmark {
         );
         config.setLeafSorter(DataStream.TIMESERIES_LEAF_READERS_SORTER);
         config.setMergePolicy(new LogByteSizeMergePolicy());
-        var docValuesFormat = new ES819Version3TSDBDocValuesFormat(
-            4096,
-            512,
-            optimizedMergeEnabled,
-            BinaryDVCompressionMode.COMPRESSED_ZSTD_LEVEL_1,
-            true,
-            NUMERIC_LARGE_BLOCK_SHIFT,
-            false
+        final FieldContextResolver dimensionResolver = (fieldName, blockSize) -> new FieldContext(
+            blockSize,
+            fieldName,
+            null,
+            null,
+            DIMENSION_FIELDS.contains(fieldName)
         );
+        final DocValuesFormat docValuesFormat = ES95TSDBDocValuesFormatFactory.create(true, true, false, dimensionResolver, true);
+        // The ES codec uses XPerFieldDocValuesFormat, which the optimized (run-granularity) merge path requires;
+        // a plain Lucene codec routes merge through the per-doc path regardless of branch.
         config.setCodec(new Elasticsearch93Lucene104Codec() {
             @Override
             public DocValuesFormat getDocValuesFormatForField(String field) {
