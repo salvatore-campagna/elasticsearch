@@ -49,25 +49,53 @@ import java.nio.file.Files;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Force-merge time of a TSDB segment as its shape is varied, isolating the dimension ordinal merge. The run-table
- * ordinal codec stores a per-series-constant dimension as one entry per run, so a run-granularity merge processes
- * {@code O(runs) = O(series)} entries regardless of docs per series, while the per-doc re-encode processes
- * {@code O(docs)}. Run it on the branch before the run-granularity merge and on the branch with it, both on the ES95
- * run-table codec, and compare.
+ * Force-merge time of a TSDB segment, isolating the dimension ordinal merge. The ES95 run-table ordinal codec
+ * stores a per-series-constant dimension (a dimension or {@code _ts_routing_hash}) as one {@code (startDoc, ordinal)}
+ * entry per run, so a run-granularity merge processes {@code O(runs) = O(series)} entries regardless of docs per
+ * series, while the per-doc re-encode merge processes {@code O(docs)}. The benchmark times a full {@code forceMerge(1)}
+ * over the ES95 run-table codec.
  *
- * <p>Every knob is a parameter, but sweep ONE at a time via {@code -p} overrides (JMH runs the cartesian product of
- * all parameter value lists, so listing several sweeps at once explodes the run matrix). Around a fixed operating
- * point (for example {@code numSeries=2000 numSegments=16 numDimensions=10 numMetrics=5 docsPerSeries=256}):
+ * <h2>Knobs (all fields are {@code @Param})</h2>
+ * Sweep exactly ONE at a time via {@code -p} overrides and hold the rest at an operating point. JMH runs the
+ * cartesian product of all parameter value lists, so listing several sweeps at once multiplies into an unusable run
+ * matrix. Operating point used for the reported results: {@code numSeries=2000 numSegments=16 numDimensions=10
+ * numMetrics=5}.
+ *
+ * <h2>Which sweeps, and why</h2>
  * <ul>
- *   <li>docs-per-series sweep: the scaling curve (before grows with docs, after bounded by series);</li>
- *   <li>segment-count sweep: the k-way run merge cost as fragmentation rises;</li>
- *   <li>metric-count sweep: the dilution of the whole-merge speedup toward the dimension fraction (metrics and
- *       {@code @timestamp} merge per-doc and are unchanged);</li>
- *   <li>dimension-count sweep: how the saving scales with the number of run-table dimensions.</li>
+ *   <li><b>Scaling</b> ({@code docsPerSeries}, at a realistic {@code numMetrics=5}): the core claim. Before tracks
+ *       {@code O(docs)} and grows with docs per series; after is bounded by {@code O(runs) = O(series)}, so the gap
+ *       widens with docs per series -- the production speedup curve.</li>
+ *   <li><b>Dilution</b> ({@code numMetrics}, at fixed {@code docsPerSeries}): realism. Metrics and {@code @timestamp}
+ *       merge per-doc and are unchanged, so adding them dilutes the whole-merge speedup toward the dimension fraction.
+ *       {@code numMetrics=0} is the isolated upper bound; {@code 5..10} is where a real metrics doc lands.</li>
  * </ul>
- * Dimensions are generated as {@code dim_0..dim_{n-1}}: even-indexed are per-series-distinct (high cardinality,
- * runs == series), odd-indexed are low cardinality; plus one multi-valued {@code host.mac}. {@code host.name} is the
- * primary sort key and merges per-doc.
+ * {@code numSegments} and {@code numDimensions} are kept as knobs for spot checks but are not the headline: the
+ * after/before ratio is roughly flat in segment count and roughly linear in dimension count.
+ *
+ * <h2>Reproduce (run from the repo root)</h2>
+ * <pre>
+ * # Smoke test (one quick point)
+ * ./gradlew -p benchmarks run --args 'TSDBDocValuesMergeBenchmark \
+ *   -p docsPerSeries=64 -p numSeries=500 -p numDimensions=10 -p numMetrics=5 -p numSegments=8 -f 1 -wi 0 -i 1'
+ *
+ * # Scaling sweep (docs per series) at a realistic mix, with allocation
+ * ./gradlew -p benchmarks run --args 'TSDBDocValuesMergeBenchmark \
+ *   -p docsPerSeries=1,16,256,1024 -p numMetrics=5 -p numDimensions=10 -p numSegments=16 -p numSeries=2000 \
+ *   -f 5 -wi 0 -i 1 -prof gc -rf json -rff dsweep.json'
+ *
+ * # Dilution sweep (metrics) at fixed docs per series
+ * ./gradlew -p benchmarks run --args 'TSDBDocValuesMergeBenchmark \
+ *   -p docsPerSeries=256 -p numMetrics=0,1,5,10 -p numDimensions=10 -p numSegments=16 -p numSeries=2000 \
+ *   -f 5 -wi 0 -i 1 -prof gc -rf json -rff msweep.json'
+ * </pre>
+ *
+ * <p>Dimensions are generated as {@code dim_0 .. dim_(n-1)}: even-indexed are per-series-distinct (high cardinality,
+ * runs equal series), odd-indexed are low cardinality; plus one multi-valued {@code host.mac}. {@code host.name} is
+ * the primary sort key and merges per-doc. A merge is not idempotent (it consumes input and writes output), so the
+ * benchmark uses {@link Mode#SingleShotTime} with several {@link Fork forks} -- each fork rebuilds the input index in
+ * {@code @Setup(Level.Trial)} and times one merge; extra measurement or warmup iterations would re-merge an
+ * already-merged index and measure nothing.
  */
 @BenchmarkMode(Mode.SingleShotTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -91,22 +119,26 @@ public class TSDBDocValuesMergeBenchmark {
     @State(Scope.Benchmark)
     public static class MergeState {
 
+        /** Docs per distinct series ({@code _tsid}); the scaling axis. Total docs grow with it, the run count does not. */
         @Param({ "1", "4", "16", "64", "256", "1024" })
         private int docsPerSeries;
 
+        /** Number of distinct series, i.e. the run count the run-granularity merge is bounded by; held fixed. */
         @Param("2000")
         private int numSeries;
 
-        // Source segments merged into one (controls commit frequency during the untimed build).
+        /** Source segments merged into one (controls commit frequency during the untimed build); the fragmentation axis. */
         @Param("16")
         private int numSegments;
 
-        // Run-table Sorted dimension fields, plus one multi-valued host.mac. Even-indexed are per-series-distinct.
+        /** Run-table Sorted dimension fields, plus one multi-valued {@code host.mac}. Even-indexed are per-series-distinct. */
         @Param("10")
         private int numDimensions;
 
-        // Per-doc numeric metric fields (not run-table). 0 isolates the dimension-merge signal; larger values
-        // dilute the whole-merge speedup toward the dimension fraction, modeling a realistic metrics doc.
+        /**
+         * Per-doc numeric metric fields, which are not run-table. {@code 0} isolates the dimension-merge signal; larger
+         * values dilute the whole-merge speedup toward the dimension fraction, modeling a realistic metrics doc.
+         */
         @Param("0")
         private int numMetrics;
 
