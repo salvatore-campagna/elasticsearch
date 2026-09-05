@@ -12,9 +12,11 @@ package org.elasticsearch.index.codec.tsdb.es95;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -22,6 +24,7 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
@@ -80,6 +83,71 @@ public class RunTableSortedMergeTests extends ESTestCase {
                 assertEquals("force-merge should leave one segment", 1, reader.leaves().size());
                 final LeafReader leaf = reader.leaves().get(0).reader();
                 assertEquals(numDocs, leaf.maxDoc());
+
+                final SortedDocValues host = leaf.getSortedDocValues(HOST_FIELD);
+                final SortedDocValues state = leaf.getSortedDocValues(LOW_CARD_FIELD);
+                final SortedDocValues ip = leaf.getSortedDocValues(PER_HOST_FIELD);
+                final SortedSetDocValues mac = leaf.getSortedSetDocValues(MULTI_VALUE_FIELD);
+
+                for (int doc = 0; doc < leaf.maxDoc(); doc++) {
+                    assertTrue("host present at doc " + doc, host.advanceExact(doc));
+                    final String hostValue = host.lookupOrd(host.ordValue()).utf8ToString();
+
+                    assertTrue("state present at doc " + doc, state.advanceExact(doc));
+                    assertEquals("doc " + doc, expectedState(hostValue), state.lookupOrd(state.ordValue()).utf8ToString());
+
+                    assertTrue("ip present at doc " + doc, ip.advanceExact(doc));
+                    assertEquals("doc " + doc, expectedIp(hostValue), ip.lookupOrd(ip.ordValue()).utf8ToString());
+
+                    assertTrue("mac present at doc " + doc, mac.advanceExact(doc));
+                    final String[] expectedMacs = expectedMacs(hostValue);
+                    assertEquals("doc " + doc + " mac count", expectedMacs.length, mac.docValueCount());
+                    for (final String expectedMac : expectedMacs) {
+                        assertEquals("doc " + doc, expectedMac, mac.lookupOrd(mac.nextOrd()).utf8ToString());
+                    }
+                }
+            }
+        }
+    }
+
+    public void testMergeWithDeletionsFallsBackAndStaysCorrect() throws IOException {
+        // Deletions make the source segments carry live-docs, so `compatibleWithOptimizedMerge` bails and the merge
+        // takes Lucene's per-doc path (not run-granularity). The merged dimension values must still be correct.
+        final int numHosts = 32;
+        final int numDocs = 3000;
+        final int commitEvery = 300;
+        final int deleteEvery = 7;
+
+        try (Directory directory = newDirectory()) {
+            int deleted = 0;
+            try (IndexWriter writer = new IndexWriter(directory, indexWriterConfig())) {
+                for (int i = 0; i < numDocs; i++) {
+                    final int host = i % numHosts;
+                    final Document doc = new Document();
+                    doc.add(new StringField("id", Integer.toString(i), Field.Store.NO));
+                    doc.add(new SortedDocValuesField(HOST_FIELD, new BytesRef(hostName(host))));
+                    doc.add(new SortedDocValuesField(LOW_CARD_FIELD, new BytesRef(stateOf(host))));
+                    doc.add(new SortedDocValuesField(PER_HOST_FIELD, new BytesRef(ipOf(host))));
+                    for (final String mac : macsOf(host)) {
+                        doc.add(new SortedSetDocValuesField(MULTI_VALUE_FIELD, new BytesRef(mac)));
+                    }
+                    doc.add(new SortedNumericDocValuesField(TIMESTAMP_FIELD, 1_000L + i));
+                    writer.addDocument(doc);
+                    if (i % commitEvery == commitEvery - 1) {
+                        writer.commit();
+                    }
+                }
+                for (int i = 0; i < numDocs; i += deleteEvery) {
+                    writer.deleteDocuments(new Term("id", Integer.toString(i)));
+                    deleted++;
+                }
+                writer.forceMerge(1);
+            }
+
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                assertEquals(1, reader.leaves().size());
+                final LeafReader leaf = reader.leaves().get(0).reader();
+                assertEquals(numDocs - deleted, leaf.maxDoc());
 
                 final SortedDocValues host = leaf.getSortedDocValues(HOST_FIELD);
                 final SortedDocValues state = leaf.getSortedDocValues(LOW_CARD_FIELD);
