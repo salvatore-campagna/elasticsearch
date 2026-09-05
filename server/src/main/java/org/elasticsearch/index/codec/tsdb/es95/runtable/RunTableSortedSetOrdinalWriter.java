@@ -76,6 +76,21 @@ public final class RunTableSortedSetOrdinalWriter {
      * {@code [0, valueCount)}. The empty set ({@code count == 0}) marks an absent doc.
      */
     public void add(final int[] ords, final int count) {
+        addRun(ords, count, 1);
+    }
+
+    /**
+     * Appends a whole run of {@code docCount} consecutive docs sharing the ordinal set held in the first
+     * {@code count} elements of {@code ords}, opening a new run unless the set equals the previous run's set,
+     * in which case the two coalesce into one longer run. This is the run-granularity entry used by segment
+     * merge, where a series split across source segments arrives as consecutive equal-set runs that must
+     * collapse, exactly as the per-doc {@link #add} path would. The first {@code count} elements must be a
+     * strictly ascending, distinct set in {@code [0, valueCount)}; the array is copied, so it may be reused.
+     */
+    public void addRun(final int[] ords, final int count, int docCount) {
+        if (docCount <= 0) {
+            throw new IllegalArgumentException("docCount must be positive, got " + docCount);
+        }
         for (int i = 0; i < count; i++) {
             final int ord = ords[i];
             if (ord < 0 || ord >= valueCount) {
@@ -89,7 +104,7 @@ public final class RunTableSortedSetOrdinalWriter {
         }
         if (numRuns == 0 || lastSet.length != count || Arrays.equals(ords, 0, count, lastSet, 0, count) == false) {
             runStartDocs = ArrayUtil.grow(runStartDocs, numRuns + 1);
-            runStartDocs[numRuns] = docCount;
+            runStartDocs[numRuns] = this.docCount;
             runOrdCounts = ArrayUtil.grow(runOrdCounts, numRuns + 1);
             runOrdCounts[numRuns] = count;
             ordStreamBuffer = ArrayUtil.grow(ordStreamBuffer, ordStreamSize + count);
@@ -99,7 +114,7 @@ public final class RunTableSortedSetOrdinalWriter {
             numRuns++;
             totalOrds += count;
         }
-        docCount++;
+        this.docCount += docCount;
     }
 
     /**

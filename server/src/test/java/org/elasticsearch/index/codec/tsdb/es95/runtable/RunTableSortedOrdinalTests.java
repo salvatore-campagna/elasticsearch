@@ -103,6 +103,67 @@ public class RunTableSortedOrdinalTests extends ESTestCase {
         }
     }
 
+    public void testAddRunProducesExpectedRuns() throws IOException {
+        final int valueCount = 3;
+        final RunTableSortedOrdinalWriter writer = new RunTableSortedOrdinalWriter(valueCount);
+        writer.addRun(1, 4);
+        writer.addRun(2, 4);
+        writer.addRun(0, 4);
+        writer.addRun(1, 4);
+        assertEquals(4, writer.numRuns());
+        try (Directory dir = new ByteBuffersDirectory()) {
+            encode(dir, writer);
+            final RunTableSortedOrdinalReader.Runs runs = openRuns(dir, 16, 0);
+            assertEquals(4, runs.count());
+            assertRun(runs, 0, 0, 4, 1);
+            assertRun(runs, 1, 4, 4, 2);
+            assertRun(runs, 2, 8, 4, 0);
+            assertRun(runs, 3, 12, 4, 1);
+        }
+    }
+
+    public void testAddRunCoalescesEqualAdjacentRuns() {
+        final RunTableSortedOrdinalWriter writer = new RunTableSortedOrdinalWriter(3);
+        writer.addRun(1, 3);
+        writer.addRun(1, 2);
+        writer.addRun(2, 1);
+        assertEquals(2, writer.numRuns());
+    }
+
+    public void testAddRunMatchesPerDocAddForRandomRuns() throws IOException {
+        final int valueCount = randomIntBetween(1, 40);
+        final int numRuns = randomIntBetween(1, 300);
+        final int[] runOrds = new int[numRuns];
+        final int[] runLengths = new int[numRuns];
+        for (int r = 0; r < numRuns; r++) {
+            runOrds[r] = randomIntBetween(0, valueCount - 1);
+            runLengths[r] = randomIntBetween(1, 12);
+        }
+        int total = 0;
+        for (final int length : runLengths) {
+            total += length;
+        }
+        final int[] perDocOrds = new int[total];
+        int doc = 0;
+        for (int r = 0; r < numRuns; r++) {
+            for (int i = 0; i < runLengths[r]; i++) {
+                perDocOrds[doc++] = runOrds[r];
+            }
+        }
+        final RunTableSortedOrdinalWriter runWriter = new RunTableSortedOrdinalWriter(valueCount);
+        for (int r = 0; r < numRuns; r++) {
+            runWriter.addRun(runOrds[r], runLengths[r]);
+        }
+        try (Directory dir = new ByteBuffersDirectory()) {
+            encode(dir, runWriter);
+            final NumericDocValues perDoc = open(dir, total, 0);
+            for (int d = 0; d < total; d++) {
+                assertTrue("doc " + d, perDoc.advanceExact(d));
+                assertEquals("doc " + d, perDocOrds[d], (int) perDoc.longValue());
+            }
+        }
+    }
+
     public void testSingleRun() throws IOException {
         final int maxDoc = 500;
         final int[] perDocOrds = new int[maxDoc];
@@ -362,6 +423,15 @@ public class RunTableSortedOrdinalTests extends ESTestCase {
             for (int i = 0; i < metaPrefix; i++) {
                 meta.writeByte((byte) i);
             }
+            return SortedRunTableLayout.encode(writer, data, meta);
+        }
+    }
+
+    private static Stats encode(Directory dir, RunTableSortedOrdinalWriter writer) throws IOException {
+        try (
+            IndexOutput data = dir.createOutput("data.bin", IOContext.DEFAULT);
+            IndexOutput meta = dir.createOutput("meta.bin", IOContext.DEFAULT)
+        ) {
             return SortedRunTableLayout.encode(writer, data, meta);
         }
     }

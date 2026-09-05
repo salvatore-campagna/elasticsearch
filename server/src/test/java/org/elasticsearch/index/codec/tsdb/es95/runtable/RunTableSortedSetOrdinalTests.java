@@ -129,6 +129,62 @@ public class RunTableSortedSetOrdinalTests extends ESTestCase {
         }
     }
 
+    public void testAddRunProducesExpectedRuns() throws IOException {
+        final RunTableSortedSetOrdinalWriter writer = new RunTableSortedSetOrdinalWriter(4);
+        writer.addRun(new int[] { 2, 3 }, 2, 4);
+        writer.addRun(new int[] { 0, 1, 2 }, 3, 4);
+        writer.addRun(new int[] { 2, 3 }, 2, 4);
+        assertEquals(3, writer.numRuns());
+        try (Directory dir = new ByteBuffersDirectory()) {
+            encode(dir, writer);
+            final RunTableSortedSetOrdinalReader.Runs runs = openRuns(dir, 12, 0);
+            assertEquals(3, runs.count());
+            assertRunSet(runs, 0, 0, 4, new int[] { 2, 3 });
+            assertRunSet(runs, 1, 4, 4, new int[] { 0, 1, 2 });
+            assertRunSet(runs, 2, 8, 4, new int[] { 2, 3 });
+        }
+    }
+
+    public void testAddRunCoalescesEqualAdjacentSets() {
+        final RunTableSortedSetOrdinalWriter writer = new RunTableSortedSetOrdinalWriter(3);
+        writer.addRun(new int[] { 0, 1 }, 2, 3);
+        writer.addRun(new int[] { 0, 1 }, 2, 2);
+        writer.addRun(new int[] { 2 }, 1, 1);
+        assertEquals(2, writer.numRuns());
+    }
+
+    public void testAddRunMatchesPerDocAddForRandomRuns() throws IOException {
+        final int valueCount = randomIntBetween(1, 40);
+        final int numRuns = randomIntBetween(1, 250);
+        final int[][] runSets = new int[numRuns][];
+        final int[] runLengths = new int[numRuns];
+        int total = 0;
+        for (int r = 0; r < numRuns; r++) {
+            runSets[r] = randomSet(valueCount);
+            runLengths[r] = randomIntBetween(1, 10);
+            total += runLengths[r];
+        }
+        final int[][] perDocSets = new int[total][];
+        int doc = 0;
+        for (int r = 0; r < numRuns; r++) {
+            for (int i = 0; i < runLengths[r]; i++) {
+                perDocSets[doc++] = runSets[r];
+            }
+        }
+        final RunTableSortedSetOrdinalWriter runWriter = new RunTableSortedSetOrdinalWriter(valueCount);
+        for (int r = 0; r < numRuns; r++) {
+            runWriter.addRun(runSets[r], runSets[r].length, runLengths[r]);
+        }
+        try (Directory dir = new ByteBuffersDirectory()) {
+            encode(dir, runWriter);
+            final SortedNumericDocValues perDoc = open(dir, total, 0);
+            for (int d = 0; d < total; d++) {
+                assertTrue("doc " + d, perDoc.advanceExact(d));
+                assertDocSet(perDoc, perDocSets[d]);
+            }
+        }
+    }
+
     public void testSingleRun() throws IOException {
         final int maxDoc = 300;
         final int[][] perDocSets = new int[maxDoc][];
@@ -395,6 +451,15 @@ public class RunTableSortedSetOrdinalTests extends ESTestCase {
             for (int i = 0; i < metaPrefix; i++) {
                 meta.writeByte((byte) i);
             }
+            return SortedSetRunTableLayout.encode(writer, data, meta);
+        }
+    }
+
+    private static Stats encode(Directory dir, RunTableSortedSetOrdinalWriter writer) throws IOException {
+        try (
+            IndexOutput data = dir.createOutput("data.bin", IOContext.DEFAULT);
+            IndexOutput meta = dir.createOutput("meta.bin", IOContext.DEFAULT)
+        ) {
             return SortedSetRunTableLayout.encode(writer, data, meta);
         }
     }

@@ -67,18 +67,31 @@ public final class RunTableSortedOrdinalWriter {
      * ordinal.
      */
     public void add(int ord) {
+        addRun(ord, 1);
+    }
+
+    /**
+     * Appends a whole run of {@code docCount} consecutive docs sharing {@code ord}, opening a new run unless
+     * {@code ord} equals the previous run's ordinal, in which case the two coalesce into one longer run. This is
+     * the run-granularity entry used by segment merge, where a series split across source segments arrives as
+     * consecutive equal-ordinal runs that must collapse, exactly as the per-doc {@link #add} path would.
+     */
+    public void addRun(int ord, int docCount) {
         if (ord < 0 || ord > valueCount) {
             throw new IllegalArgumentException("ord " + ord + " out of bounds for valueCount " + valueCount);
+        }
+        if (docCount <= 0) {
+            throw new IllegalArgumentException("docCount must be positive, got " + docCount);
         }
         if (numRuns == 0 || ord != runOrds[numRuns - 1]) {
             runStartDocs = ArrayUtil.grow(runStartDocs, numRuns + 1);
             runOrds = ArrayUtil.grow(runOrds, numRuns + 1);
-            runStartDocs[numRuns] = docCount;
+            runStartDocs[numRuns] = this.docCount;
             runOrds[numRuns] = ord;
             numRuns++;
         }
         maxOrdWritten = Math.max(maxOrdWritten, ord);
-        docCount++;
+        this.docCount += docCount;
     }
 
     int valueCount() {
