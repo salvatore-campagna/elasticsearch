@@ -46,20 +46,28 @@ import org.openjdk.jmh.annotations.Warmup;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Force-merge time of TSDB dimension fields as the number of docs per series grows while the series (distinct
- * {@code _tsid}) count is held constant. The run-table ordinal codec stores a per-series-constant dimension as one
- * entry per run, so a run-granularity merge processes {@code O(runs) = O(series)} entries regardless of docs per
- * series; the per-doc re-encode merge processes {@code O(docs)}.
+ * Force-merge time of a TSDB segment as its shape is varied, isolating the dimension ordinal merge. The run-table
+ * ordinal codec stores a per-series-constant dimension as one entry per run, so a run-granularity merge processes
+ * {@code O(runs) = O(series)} entries regardless of docs per series, while the per-doc re-encode processes
+ * {@code O(docs)}. Run it on the branch before the run-granularity merge and on the branch with it, both on the ES95
+ * run-table codec, and compare.
  *
- * <p>The benchmark holds the series count fixed and sweeps {@code docsPerSeries}, so total docs grow linearly.
- * Run it on the branch before the run-granularity merge (per-doc re-encode) and on the branch with it, both using
- * the ES95 run-table codec: the before curve grows with docs, the after curve stays roughly flat, bounded by the
- * series count. The segment carries only the dimension fields plus the {@code _tsid} sort key so the merge signal
- * is the dimension ordinal merge rather than metric or timestamp encoding.
+ * <p>Every knob is a parameter, but sweep ONE at a time via {@code -p} overrides (JMH runs the cartesian product of
+ * all parameter value lists, so listing several sweeps at once explodes the run matrix). Around a fixed operating
+ * point (for example {@code numSeries=2000 numSegments=16 numDimensions=10 numMetrics=5 docsPerSeries=256}):
+ * <ul>
+ *   <li>docs-per-series sweep: the scaling curve (before grows with docs, after bounded by series);</li>
+ *   <li>segment-count sweep: the k-way run merge cost as fragmentation rises;</li>
+ *   <li>metric-count sweep: the dilution of the whole-merge speedup toward the dimension fraction (metrics and
+ *       {@code @timestamp} merge per-doc and are unchanged);</li>
+ *   <li>dimension-count sweep: how the saving scales with the number of run-table dimensions.</li>
+ * </ul>
+ * Dimensions are generated as {@code dim_0..dim_{n-1}}: even-indexed are per-series-distinct (high cardinality,
+ * runs == series), odd-indexed are low cardinality; plus one multi-valued {@code host.mac}. {@code host.name} is the
+ * primary sort key and merges per-doc.
  */
 @BenchmarkMode(Mode.SingleShotTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -76,25 +84,9 @@ public class TSDBDocValuesMergeBenchmark {
 
     private static final String TIMESTAMP_FIELD = "@timestamp";
     private static final String HOSTNAME_FIELD = "host.name";
-    private static final String HOST_IP_FIELD = "host.ip";
-    private static final String STATE_FIELD = "state";
-    private static final String OS_TYPE_FIELD = "os_type";
-    private static final String DIRECTION_FIELD = "direction";
     private static final String MAC_FIELD = "host.mac";
-
-    private static final Set<String> DIMENSION_FIELDS = Set.of(
-        HOSTNAME_FIELD,
-        HOST_IP_FIELD,
-        STATE_FIELD,
-        OS_TYPE_FIELD,
-        DIRECTION_FIELD,
-        MAC_FIELD
-    );
-
+    private static final String DIM_PREFIX = "dim_";
     private static final long BASE_TIMESTAMP = 1704067200000L;
-    private static final String[] STATES = { "active", "idle", "wait" };
-    private static final String[] OS_TYPES = { "linux", "macos", "windows" };
-    private static final String[] DIRECTIONS = { "rx", "tx" };
 
     @State(Scope.Benchmark)
     public static class MergeState {
@@ -105,41 +97,66 @@ public class TSDBDocValuesMergeBenchmark {
         @Param("2000")
         private int numSeries;
 
-        // Number of source segments merged into one. Sweep this (at fixed docsPerSeries) to measure the k-way run
-        // merge cost as fragmentation rises; keep it fixed while sweeping docsPerSeries for the scaling curve.
+        // Source segments merged into one (controls commit frequency during the untimed build).
         @Param("16")
         private int numSegments;
+
+        // Run-table Sorted dimension fields, plus one multi-valued host.mac. Even-indexed are per-series-distinct.
+        @Param("10")
+        private int numDimensions;
+
+        // Per-doc numeric metric fields (not run-table). 0 isolates the dimension-merge signal; larger values
+        // dilute the whole-merge speedup toward the dimension fraction, modeling a realistic metrics doc.
+        @Param("0")
+        private int numMetrics;
 
         private Directory directory;
 
         @Setup(Level.Trial)
         public void setup() throws IOException {
             directory = FSDirectory.open(Files.createTempDirectory("runtable-merge-"));
-            createIndex(directory, numSeries, docsPerSeries, numSegments);
+            createIndex(directory, numSeries, docsPerSeries, numSegments, numDimensions, numMetrics);
         }
     }
 
     @Benchmark
     public void forceMerge(MergeState state) throws IOException {
-        try (IndexWriter indexWriter = new IndexWriter(state.directory, indexWriterConfig())) {
+        try (IndexWriter indexWriter = new IndexWriter(state.directory, indexWriterConfig(state.numDimensions))) {
             indexWriter.forceMerge(1);
         }
     }
 
-    private static void createIndex(final Directory directory, int numSeries, int docsPerSeries, int numSegments) throws IOException {
+    // Even-indexed dimensions are per-series-distinct (runs == series); odd-indexed are low cardinality.
+    private static int dimCardinality(int dimension, int numSeries) {
+        return (dimension % 2 == 0) ? numSeries : (2 + (dimension / 2) % 30);
+    }
+
+    private static void createIndex(
+        final Directory directory,
+        int numSeries,
+        int docsPerSeries,
+        int numSegments,
+        int numDimensions,
+        int numMetrics
+    ) throws IOException {
         final int commitInterval = Math.max(1, numSeries * docsPerSeries / numSegments);
-        try (IndexWriter indexWriter = new IndexWriter(directory, indexWriterConfig())) {
+        try (IndexWriter indexWriter = new IndexWriter(directory, indexWriterConfig(numDimensions))) {
             int docCount = 0;
             for (int series = 0; series < numSeries; series++) {
                 for (int within = 0; within < docsPerSeries; within++) {
                     final Document doc = new Document();
                     doc.add(new SortedDocValuesField(HOSTNAME_FIELD, new BytesRef("host-" + series)));
-                    doc.add(new SortedDocValuesField(HOST_IP_FIELD, new BytesRef(ipOf(series))));
-                    doc.add(new SortedDocValuesField(STATE_FIELD, new BytesRef(STATES[series % STATES.length])));
-                    doc.add(new SortedDocValuesField(OS_TYPE_FIELD, new BytesRef(OS_TYPES[series % OS_TYPES.length])));
-                    doc.add(new SortedDocValuesField(DIRECTION_FIELD, new BytesRef(DIRECTIONS[series % DIRECTIONS.length])));
+                    // Dimensions, constant per series so they form runs under the (host.name, @timestamp desc) sort.
+                    for (int dimension = 0; dimension < numDimensions; dimension++) {
+                        final int value = series % dimCardinality(dimension, numSeries);
+                        doc.add(new SortedDocValuesField(DIM_PREFIX + dimension, new BytesRef("v" + value)));
+                    }
                     doc.add(new SortedSetDocValuesField(MAC_FIELD, new BytesRef("mac-" + (series % 4))));
                     doc.add(new SortedSetDocValuesField(MAC_FIELD, new BytesRef("mac-" + ((series % 4) + 4))));
+                    // Per-doc numeric metrics: distinct per doc so they do not run-length compress (per-doc merge).
+                    for (int metric = 0; metric < numMetrics; metric++) {
+                        doc.add(new SortedNumericDocValuesField("metric_" + metric, ((long) series << 20) + within + metric));
+                    }
                     doc.add(new SortedNumericDocValuesField(TIMESTAMP_FIELD, BASE_TIMESTAMP + within));
                     indexWriter.addDocument(doc);
                     if (++docCount % commitInterval == 0) {
@@ -150,11 +167,7 @@ public class TSDBDocValuesMergeBenchmark {
         }
     }
 
-    private static String ipOf(int series) {
-        return "10." + (series >> 16 & 0xFF) + "." + (series >> 8 & 0xFF) + "." + (series & 0xFF);
-    }
-
-    private static IndexWriterConfig indexWriterConfig() {
+    private static IndexWriterConfig indexWriterConfig(int numDimensions) {
         final IndexWriterConfig config = new IndexWriterConfig(new StandardAnalyzer());
         config.setIndexSort(
             new Sort(
@@ -169,7 +182,7 @@ public class TSDBDocValuesMergeBenchmark {
             fieldName,
             null,
             null,
-            DIMENSION_FIELDS.contains(fieldName)
+            fieldName.startsWith(DIM_PREFIX) || fieldName.equals(MAC_FIELD)
         );
         final DocValuesFormat docValuesFormat = ES95TSDBDocValuesFormatFactory.create(true, true, false, dimensionResolver, true);
         // The ES codec uses XPerFieldDocValuesFormat, which the optimized (run-granularity) merge path requires;
