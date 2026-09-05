@@ -11,6 +11,7 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 
 import org.apache.lucene.util.ArrayUtil;
 
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
@@ -29,7 +30,7 @@ public final class SortedSetRunMerger {
 
     private SortedSetRunMerger() {}
 
-    public static void merge(final List<SortedSetSeriesCursor> cursors, final RunTableSortedSetOrdinalWriter writer) {
+    public static void merge(final List<SortedSetSeriesCursor> cursors, final RunTableSortedSetOrdinalWriter writer) throws IOException {
         final PriorityQueue<SortedSetSeriesCursor> queue = new PriorityQueue<>(
             Math.max(1, cursors.size()),
             Comparator.comparingLong(SortedSetSeriesCursor::tsidOrd)

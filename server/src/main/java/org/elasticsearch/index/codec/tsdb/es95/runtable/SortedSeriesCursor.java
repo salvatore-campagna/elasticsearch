@@ -9,6 +9,8 @@
 
 package org.elasticsearch.index.codec.tsdb.es95.runtable;
 
+import java.io.IOException;
+
 /**
  * Ascending-by-global-{@code _tsid}-ordinal view of one source segment's series for a {@code Sorted} field,
  * consumed by {@link SortedRunMerger} during segment merge. A dimension ordinal is constant across every doc of
@@ -18,7 +20,7 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 public interface SortedSeriesCursor {
 
     /** Advances to the next series, returning {@code false} once the segment's series are exhausted. */
-    boolean next();
+    boolean next() throws IOException;
 
     /** The current series' global {@code _tsid} ordinal, strictly increasing across a segment. */
     long tsidOrd();

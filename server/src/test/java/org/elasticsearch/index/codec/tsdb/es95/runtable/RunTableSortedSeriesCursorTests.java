@@ -12,23 +12,24 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 import org.apache.lucene.util.LongValues;
 import org.elasticsearch.test.ESTestCase;
 
+import java.io.IOException;
+
 /**
- * Unit tests for {@link RunTableSortedSeriesCursor}, the per-segment adapter that turns a segment's series
- * boundaries, its {@code _tsid} global ordinals, and a field's run-table {@link RunTableSortedOrdinalReader.Runs}
- * view into the {@link SortedSeriesCursor} the merger consumes. Covers a field run spanning several series, the
- * field-ordinal remap through the merged terms dictionary, and the absent (sentinel) series mapping to the merged
- * sentinel rather than through the ordinal map.
+ * Unit tests for {@link RunTableSortedSeriesCursor}, the per-segment adapter that pairs a {@link SeriesIterator}
+ * with a field's run-table {@link org.elasticsearch.index.codec.tsdb.SortedRunView} to produce the
+ * {@link SortedSeriesCursor} the merger consumes. Covers a field run spanning several series, the field-ordinal
+ * remap through the merged terms dictionary, and the absent (sentinel) series mapping to the merged sentinel
+ * rather than through the ordinal map. Series are supplied through an array-backed {@link SeriesIterator} double.
  */
 public class RunTableSortedSeriesCursorTests extends ESTestCase {
 
-    public void testFieldRunSpansMultipleSeriesWithRemap() {
+    public void testFieldRunSpansMultipleSeriesWithRemap() throws IOException {
         // Field: run0 ord 5 over docs [0,5), run1 ord 7 over docs [5,6).
         final RunTableSortedOrdinalReader.Runs fieldRuns = runs(new int[] { 0, 5 }, new long[] { 5, 7 }, 6, 8);
         // Three series; the first two both fall inside field run0.
-        final int[] seriesStartDocs = { 0, 2, 5 };
-        final long[] tsidGlobalOrds = { 10, 20, 30 };
+        final SeriesIterator series = seriesIterator(new long[] { 10, 20, 30 }, new int[] { 0, 2, 5 }, new int[] { 2, 3, 1 });
         final LongValues remap = remap(new long[] { 0, 10, 20, 30, 40, 50, 60, 70 });
-        final RunTableSortedSeriesCursor cursor = new RunTableSortedSeriesCursor(seriesStartDocs, tsidGlobalOrds, 6, fieldRuns, remap, 8);
+        final RunTableSortedSeriesCursor cursor = new RunTableSortedSeriesCursor(series, fieldRuns, remap, 8);
 
         assertTrue(cursor.next());
         assertEquals(10, cursor.tsidOrd());
@@ -48,21 +49,13 @@ public class RunTableSortedSeriesCursorTests extends ESTestCase {
         assertFalse(cursor.next());
     }
 
-    public void testAbsentSeriesEmitsMergedSentinel() {
+    public void testAbsentSeriesEmitsMergedSentinel() throws IOException {
         // Field valueCount 3 -> source sentinel 3. run1 (ord 3) is an absent run over docs [2,4).
         final RunTableSortedOrdinalReader.Runs fieldRuns = runs(new int[] { 0, 2, 4 }, new long[] { 1, 3, 0 }, 5, 3);
-        final int[] seriesStartDocs = { 0, 2, 4 };
-        final long[] tsidGlobalOrds = { 10, 20, 30 };
+        final SeriesIterator series = seriesIterator(new long[] { 10, 20, 30 }, new int[] { 0, 2, 4 }, new int[] { 2, 2, 1 });
         final LongValues remap = remap(new long[] { 0, 1, 2 });
         final int mergedSentinel = 9;
-        final RunTableSortedSeriesCursor cursor = new RunTableSortedSeriesCursor(
-            seriesStartDocs,
-            tsidGlobalOrds,
-            5,
-            fieldRuns,
-            remap,
-            mergedSentinel
-        );
+        final RunTableSortedSeriesCursor cursor = new RunTableSortedSeriesCursor(series, fieldRuns, remap, mergedSentinel);
 
         assertTrue(cursor.next());
         assertEquals(1, cursor.fieldOrd());
@@ -74,6 +67,32 @@ public class RunTableSortedSeriesCursorTests extends ESTestCase {
         assertEquals(0, cursor.fieldOrd());
 
         assertFalse(cursor.next());
+    }
+
+    private static SeriesIterator seriesIterator(long[] tsidOrds, int[] startDocs, int[] docCounts) {
+        return new SeriesIterator() {
+            private int i = -1;
+
+            @Override
+            public boolean next() {
+                return ++i < tsidOrds.length;
+            }
+
+            @Override
+            public long tsidOrd() {
+                return tsidOrds[i];
+            }
+
+            @Override
+            public int startDoc() {
+                return startDocs[i];
+            }
+
+            @Override
+            public int docCount() {
+                return docCounts[i];
+            }
+        };
     }
 
     private static RunTableSortedOrdinalReader.Runs runs(int[] startDocs, long[] ords, int maxDoc, int valueCount) {

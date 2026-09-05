@@ -18,7 +18,6 @@ import org.apache.lucene.index.OrdinalMap;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.index.codec.FilterDocValuesProducer;
@@ -39,10 +38,11 @@ import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.RunTableSortedOrdinalReader;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.RunTableSortedOrdinalWriter;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.RunTableSortedSeriesCursor;
+import org.elasticsearch.index.codec.tsdb.es95.runtable.ScanningSeriesIterator;
+import org.elasticsearch.index.codec.tsdb.es95.runtable.SeriesIterator;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.SortedRunMerger;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.SortedRunTableLayout;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.SortedSeriesCursor;
-import org.elasticsearch.index.codec.tsdb.es95.runtable.TsidSeriesBoundaries;
 import org.elasticsearch.index.codec.tsdb.pipeline.FieldContextResolver;
 
 import java.io.IOException;
@@ -307,28 +307,12 @@ final class RunTableSortedCodec implements SortedOrdinalCodec {
                 if (fieldRuns == null) {
                     return false;
                 }
-                final int segmentMaxDoc = mergeState.maxDocs[i];
-                final TsidSeriesBoundaries boundaries = TsidSeriesBoundaries.enumerate(
+                final SeriesIterator series = new ScanningSeriesIterator(
                     producers[i].getSorted(sourceTsidFields[i]),
-                    segmentMaxDoc
+                    tsidOrdinalMap.getGlobalOrds(i),
+                    mergeState.maxDocs[i]
                 );
-                final LongValues tsidGlobalOrds = tsidOrdinalMap.getGlobalOrds(i);
-                final int[] seriesStartDocs = boundaries.startDocs();
-                final int[] localTsidOrds = boundaries.tsidOrds();
-                final long[] seriesTsidGlobalOrds = new long[seriesStartDocs.length];
-                for (int series = 0; series < seriesStartDocs.length; series++) {
-                    seriesTsidGlobalOrds[series] = tsidGlobalOrds.get(localTsidOrds[series]);
-                }
-                cursors.add(
-                    new RunTableSortedSeriesCursor(
-                        seriesStartDocs,
-                        seriesTsidGlobalOrds,
-                        segmentMaxDoc,
-                        fieldRuns,
-                        ordinalMap.getGlobalOrds(i),
-                        mergedSentinel
-                    )
-                );
+                cursors.add(new RunTableSortedSeriesCursor(series, fieldRuns, ordinalMap.getGlobalOrds(i), mergedSentinel));
             }
 
             final RunTableSortedOrdinalWriter accumulator = new RunTableSortedOrdinalWriter(mergedSentinel);

@@ -12,11 +12,12 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 import org.apache.lucene.util.LongValues;
 import org.elasticsearch.index.codec.tsdb.SortedSetRunView;
 
+import java.io.IOException;
+
 /**
- * Per-segment {@link SortedSetSeriesCursor} for a {@code SortedSet} field during merge. It walks the segment's
- * series boundaries (precomputed once per merge from {@code _tsid}) and, for each series, reports the series'
- * global {@code _tsid} ordinal and the ordinal set read from the field's run-table
- * {@link RunTableSortedSetOrdinalReader.Runs} view.
+ * Per-segment {@link SortedSetSeriesCursor} for a {@code SortedSet} field during merge. It advances a
+ * {@link SeriesIterator} over the segment's series and, for each series, reports the global {@code _tsid} ordinal
+ * and the ordinal set read from the field's run-table {@link SortedSetRunView}.
  *
  * <p>A field run can span several series when adjacent series share a set, so the field-run pointer co-advances
  * with the series pointer rather than assuming a one-to-one mapping. Each ordinal is remapped to the merged terms
@@ -25,35 +26,24 @@ import org.elasticsearch.index.codec.tsdb.SortedSetRunView;
  */
 public final class RunTableSortedSetSeriesCursor implements SortedSetSeriesCursor {
 
-    private final int[] seriesStartDocs;
-    private final long[] seriesTsidGlobalOrds;
-    private final int maxDoc;
+    private final SeriesIterator series;
     private final SortedSetRunView fieldRuns;
     private final LongValues fieldRemap;
 
-    private int seriesIndex = -1;
     private int fieldRun = 0;
 
-    public RunTableSortedSetSeriesCursor(
-        final int[] seriesStartDocs,
-        final long[] seriesTsidGlobalOrds,
-        int maxDoc,
-        final SortedSetRunView fieldRuns,
-        final LongValues fieldRemap
-    ) {
-        this.seriesStartDocs = seriesStartDocs;
-        this.seriesTsidGlobalOrds = seriesTsidGlobalOrds;
-        this.maxDoc = maxDoc;
+    public RunTableSortedSetSeriesCursor(final SeriesIterator series, final SortedSetRunView fieldRuns, final LongValues fieldRemap) {
+        this.series = series;
         this.fieldRuns = fieldRuns;
         this.fieldRemap = fieldRemap;
     }
 
     @Override
-    public boolean next() {
-        if (++seriesIndex >= seriesStartDocs.length) {
+    public boolean next() throws IOException {
+        if (series.next() == false) {
             return false;
         }
-        final int start = seriesStartDocs[seriesIndex];
+        final int start = series.startDoc();
         while (fieldRun + 1 < fieldRuns.count() && fieldRuns.startDoc(fieldRun + 1) <= start) {
             fieldRun++;
         }
@@ -62,13 +52,12 @@ public final class RunTableSortedSetSeriesCursor implements SortedSetSeriesCurso
 
     @Override
     public long tsidOrd() {
-        return seriesTsidGlobalOrds[seriesIndex];
+        return series.tsidOrd();
     }
 
     @Override
     public int docCount() {
-        final int end = seriesIndex + 1 < seriesStartDocs.length ? seriesStartDocs[seriesIndex + 1] : maxDoc;
-        return end - seriesStartDocs[seriesIndex];
+        return series.docCount();
     }
 
     @Override

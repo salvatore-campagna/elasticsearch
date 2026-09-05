@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.codec.tsdb.es95.runtable;
 
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
@@ -27,7 +28,7 @@ public final class SortedRunMerger {
 
     private SortedRunMerger() {}
 
-    public static void merge(final List<SortedSeriesCursor> cursors, final RunTableSortedOrdinalWriter writer) {
+    public static void merge(final List<SortedSeriesCursor> cursors, final RunTableSortedOrdinalWriter writer) throws IOException {
         final PriorityQueue<SortedSeriesCursor> queue = new PriorityQueue<>(
             Math.max(1, cursors.size()),
             Comparator.comparingLong(SortedSeriesCursor::tsidOrd)

@@ -12,11 +12,12 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 import org.apache.lucene.util.LongValues;
 import org.elasticsearch.index.codec.tsdb.SortedRunView;
 
+import java.io.IOException;
+
 /**
- * Per-segment {@link SortedSeriesCursor} for a {@code Sorted} field during merge. It walks the segment's series
- * boundaries (precomputed once per merge from {@code _tsid}) and, for each series, reports the series' global
- * {@code _tsid} ordinal and the field ordinal read from the field's run-table {@link RunTableSortedOrdinalReader.Runs}
- * view.
+ * Per-segment {@link SortedSeriesCursor} for a {@code Sorted} field during merge. It advances a
+ * {@link SeriesIterator} over the segment's series and, for each series, reports the global {@code _tsid} ordinal
+ * and the field ordinal read from the field's run-table {@link SortedRunView}.
  *
  * <p>A field run can span several series when adjacent series share a value, so the field-run pointer co-advances
  * with the series pointer rather than assuming a one-to-one mapping. The field ordinal is remapped to the merged
@@ -25,38 +26,31 @@ import org.elasticsearch.index.codec.tsdb.SortedRunView;
  */
 public final class RunTableSortedSeriesCursor implements SortedSeriesCursor {
 
-    private final int[] seriesStartDocs;
-    private final long[] seriesTsidGlobalOrds;
-    private final int maxDoc;
+    private final SeriesIterator series;
     private final SortedRunView fieldRuns;
     private final LongValues fieldRemap;
     private final int mergedSentinel;
 
-    private int seriesIndex = -1;
     private int fieldRun = 0;
 
     public RunTableSortedSeriesCursor(
-        final int[] seriesStartDocs,
-        final long[] seriesTsidGlobalOrds,
-        int maxDoc,
+        final SeriesIterator series,
         final SortedRunView fieldRuns,
         final LongValues fieldRemap,
         int mergedSentinel
     ) {
-        this.seriesStartDocs = seriesStartDocs;
-        this.seriesTsidGlobalOrds = seriesTsidGlobalOrds;
-        this.maxDoc = maxDoc;
+        this.series = series;
         this.fieldRuns = fieldRuns;
         this.fieldRemap = fieldRemap;
         this.mergedSentinel = mergedSentinel;
     }
 
     @Override
-    public boolean next() {
-        if (++seriesIndex >= seriesStartDocs.length) {
+    public boolean next() throws IOException {
+        if (series.next() == false) {
             return false;
         }
-        final int start = seriesStartDocs[seriesIndex];
+        final int start = series.startDoc();
         while (fieldRun + 1 < fieldRuns.count() && fieldRuns.startDoc(fieldRun + 1) <= start) {
             fieldRun++;
         }
@@ -65,13 +59,12 @@ public final class RunTableSortedSeriesCursor implements SortedSeriesCursor {
 
     @Override
     public long tsidOrd() {
-        return seriesTsidGlobalOrds[seriesIndex];
+        return series.tsidOrd();
     }
 
     @Override
     public int docCount() {
-        final int end = seriesIndex + 1 < seriesStartDocs.length ? seriesStartDocs[seriesIndex + 1] : maxDoc;
-        return end - seriesStartDocs[seriesIndex];
+        return series.docCount();
     }
 
     @Override
