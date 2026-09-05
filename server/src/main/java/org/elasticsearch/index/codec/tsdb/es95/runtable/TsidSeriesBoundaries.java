@@ -24,7 +24,7 @@ import java.io.IOException;
  * {@code _tsid} walk is paid once rather than once per field. A dimension field's series-level values are then
  * read at run granularity from its run-table columns.
  */
-final class TsidSeriesBoundaries {
+public final class TsidSeriesBoundaries {
 
     private final int[] startDocs;
     private final int[] tsidOrds;
@@ -34,19 +34,19 @@ final class TsidSeriesBoundaries {
         this.tsidOrds = tsidOrds;
     }
 
-    int count() {
+    public int count() {
         return startDocs.length;
     }
 
-    int[] startDocs() {
+    public int[] startDocs() {
         return startDocs;
     }
 
-    int[] tsidOrds() {
+    public int[] tsidOrds() {
         return tsidOrds;
     }
 
-    static TsidSeriesBoundaries enumerate(final SortedDocValues tsid, int maxDoc) throws IOException {
+    public static TsidSeriesBoundaries enumerate(final SortedDocValues tsid, int maxDoc) throws IOException {
         int[] startDocs = new int[16];
         int[] tsidOrds = new int[16];
         int count = 0;

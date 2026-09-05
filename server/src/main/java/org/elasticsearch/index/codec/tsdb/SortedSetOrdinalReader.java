@@ -46,4 +46,13 @@ public interface SortedSetOrdinalReader {
      * @return per-doc ordinal doc values
      */
     SortedNumericDocValues ordinals(SortedNumericEntry entry, long maxOrd) throws IOException;
+
+    /**
+     * Returns a run-granularity view of the field parsed by {@link #readOrdinalMeta}, or {@code null} if this
+     * reader did not store the field run-table encoded. Segment merge uses it to read a source field once per run
+     * instead of once per doc; a {@code null} return signals the field must fall back to the per-doc merge.
+     */
+    default SortedSetRunView runs(SortedNumericEntry entry, long maxOrd) throws IOException {
+        return null;
+    }
 }

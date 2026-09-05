@@ -13,6 +13,7 @@ import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.packed.DirectMonotonicReader;
 import org.apache.lucene.util.packed.DirectReader;
+import org.elasticsearch.index.codec.tsdb.SortedRunView;
 
 /**
  * Opens a run table written by {@link RunTableSortedOrdinalWriter} as a virtual
@@ -63,27 +64,10 @@ public final class RunTableSortedOrdinalReader {
     }
 
     /**
-     * Random-access view of a run-table {@code Sorted} field as runs rather than per doc. Segment merge
-     * reads a source field once per run instead of once per doc, so its ordinal work scales with the
-     * number of runs (series) rather than the number of docs.
+     * Run-table implementation of {@link SortedRunView}. Named locally so the layout and reader continue to refer
+     * to it as {@code Runs}; the base interface is what the producer hands to the merge path.
      */
-    public interface Runs {
-
-        /** The number of runs in the field. */
-        int count();
-
-        /** The first doc covered by {@code run}. */
-        int startDoc(int run);
-
-        /** The number of docs covered by {@code run}. */
-        int length(int run);
-
-        /** The ordinal shared by every doc in {@code run}; equals {@link #sentinel()} for an absent run. */
-        long ordinal(int run);
-
-        /** The reserved ordinal marking absent docs, equal to the field cardinality {@code K}. */
-        int sentinel();
-    }
+    public interface Runs extends SortedRunView {}
 
     static Runs openRuns(final LongValues startDocs, final LongValues ordsPerRun, int numRuns, int maxDoc, int valueCount) {
         return new RunTableRuns(startDocs, ordsPerRun, numRuns, maxDoc, valueCount);

@@ -10,6 +10,7 @@
 package org.elasticsearch.index.codec.tsdb.es95.runtable;
 
 import org.apache.lucene.util.LongValues;
+import org.elasticsearch.index.codec.tsdb.SortedRunView;
 
 /**
  * Per-segment {@link SortedSeriesCursor} for a {@code Sorted} field during merge. It walks the segment's series
@@ -22,23 +23,23 @@ import org.apache.lucene.util.LongValues;
  * terms dictionary through {@code fieldRemap}, except an absent series, whose source run carries the source
  * sentinel, is emitted as the merged sentinel: the ordinal map covers only the real ordinals {@code [0, K)}.
  */
-final class RunTableSortedSeriesCursor implements SortedSeriesCursor {
+public final class RunTableSortedSeriesCursor implements SortedSeriesCursor {
 
     private final int[] seriesStartDocs;
     private final long[] seriesTsidGlobalOrds;
     private final int maxDoc;
-    private final RunTableSortedOrdinalReader.Runs fieldRuns;
+    private final SortedRunView fieldRuns;
     private final LongValues fieldRemap;
     private final int mergedSentinel;
 
     private int seriesIndex = -1;
     private int fieldRun = 0;
 
-    RunTableSortedSeriesCursor(
+    public RunTableSortedSeriesCursor(
         final int[] seriesStartDocs,
         final long[] seriesTsidGlobalOrds,
         int maxDoc,
-        final RunTableSortedOrdinalReader.Runs fieldRuns,
+        final SortedRunView fieldRuns,
         final LongValues fieldRemap,
         int mergedSentinel
     ) {

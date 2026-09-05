@@ -12,6 +12,7 @@ package org.elasticsearch.index.codec.tsdb.es95.runtable;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.packed.DirectMonotonicReader;
+import org.elasticsearch.index.codec.tsdb.SortedSetRunView;
 
 /**
  * Opens a run table written by {@link RunTableSortedSetOrdinalWriter} as a virtual
@@ -75,27 +76,10 @@ public final class RunTableSortedSetOrdinalReader {
     }
 
     /**
-     * Random-access view of a run-table {@code SortedSet} field as runs rather than per doc. Segment merge
-     * reads a source field once per run instead of once per doc, so its ordinal work scales with the number
-     * of runs (series) rather than the number of docs.
+     * Run-table implementation of {@link SortedSetRunView}. Named locally so the layout and reader continue to
+     * refer to it as {@code Runs}; the base interface is what the producer hands to the merge path.
      */
-    public interface Runs {
-
-        /** The number of runs in the field. */
-        int count();
-
-        /** The first doc covered by {@code run}. */
-        int startDoc(int run);
-
-        /** The number of docs covered by {@code run}. */
-        int length(int run);
-
-        /** The number of ordinals in {@code run}'s set; zero for an absent (empty-set) run. */
-        int ordCount(int run);
-
-        /** The {@code index}-th ordinal of {@code run}'s set, ascending within the run. */
-        long ordAt(int run, int index);
-    }
+    public interface Runs extends SortedSetRunView {}
 
     static Runs openRuns(final LongValues startDocs, final LongValues setOffsets, final LongValues ordStream, int numRuns, int maxDoc) {
         return new RunTableSetRuns(startDocs, setOffsets, ordStream, numRuns, maxDoc);

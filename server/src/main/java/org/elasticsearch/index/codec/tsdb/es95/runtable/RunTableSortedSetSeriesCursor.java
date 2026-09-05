@@ -10,6 +10,7 @@
 package org.elasticsearch.index.codec.tsdb.es95.runtable;
 
 import org.apache.lucene.util.LongValues;
+import org.elasticsearch.index.codec.tsdb.SortedSetRunView;
 
 /**
  * Per-segment {@link SortedSetSeriesCursor} for a {@code SortedSet} field during merge. It walks the segment's
@@ -22,22 +23,22 @@ import org.apache.lucene.util.LongValues;
  * dictionary through {@code fieldRemap}; the remap preserves order, so the set stays ascending. An absent series
  * is the empty set and needs no sentinel.
  */
-final class RunTableSortedSetSeriesCursor implements SortedSetSeriesCursor {
+public final class RunTableSortedSetSeriesCursor implements SortedSetSeriesCursor {
 
     private final int[] seriesStartDocs;
     private final long[] seriesTsidGlobalOrds;
     private final int maxDoc;
-    private final RunTableSortedSetOrdinalReader.Runs fieldRuns;
+    private final SortedSetRunView fieldRuns;
     private final LongValues fieldRemap;
 
     private int seriesIndex = -1;
     private int fieldRun = 0;
 
-    RunTableSortedSetSeriesCursor(
+    public RunTableSortedSetSeriesCursor(
         final int[] seriesStartDocs,
         final long[] seriesTsidGlobalOrds,
         int maxDoc,
-        final RunTableSortedSetOrdinalReader.Runs fieldRuns,
+        final SortedSetRunView fieldRuns,
         final LongValues fieldRemap
     ) {
         this.seriesStartDocs = seriesStartDocs;

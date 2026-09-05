@@ -40,4 +40,15 @@ public interface SortedOrdinalCodec {
      * @return       the sorted ordinal field reader
      */
     SortedOrdinalReader createReader(NumericReadContext ctx, IndexInput data, int maxDoc);
+
+    /**
+     * Returns the merge-time writer that encodes a sorted field's ordinal columns at run granularity during
+     * segment merge. The default returns a no-op that reports "not handled", so a codec without a run-granularity
+     * merge falls back to the per-doc re-encode; run-table codecs override this.
+     *
+     * @return the sorted ordinal merge writer
+     */
+    default SortedOrdinalMergeWriter createMergeWriter() {
+        return (field, mergeState, ordinalMap, ctx, maxOrd) -> false;
+    }
 }

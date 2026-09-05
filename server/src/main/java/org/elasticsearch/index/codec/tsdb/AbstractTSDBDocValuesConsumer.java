@@ -698,7 +698,13 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
         final int maxOrd = sorted.getValueCount();
         addTermsDict(DocValues.singleton(sorted), observer);
         observer.prepareForDocs();
-        writeSortedOrdinalField(field, producer, maxOrd, null, observer);
+        // On the optimized merge path a run-table codec can produce the ordinal columns at run granularity from the
+        // source segments' runs; otherwise (flush, or an unsupported field) re-encode the per-doc ordinal stream.
+        final boolean mergedAtRunGranularity = valuesProducer instanceof MergingTsdbDocValuesProducer merging
+            && sortedCodec.createMergeWriter().writeMergedOrdinals(field, merging.mergeState, merging.ordinalMap, writeContext, maxOrd);
+        if (mergedAtRunGranularity == false) {
+            writeSortedOrdinalField(field, producer, maxOrd, null, observer);
+        }
         if (primarySortFieldNumber == field.number) {
             meta.writeByte(observer != SortedFieldObserver.NOOP ? (byte) 1 : (byte) 0);
         }

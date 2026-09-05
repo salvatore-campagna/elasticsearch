@@ -25,6 +25,7 @@ import org.elasticsearch.index.codec.tsdb.SortedFieldObserver;
 import org.elasticsearch.index.codec.tsdb.SortedSetOrdinalCodec;
 import org.elasticsearch.index.codec.tsdb.SortedSetOrdinalReader;
 import org.elasticsearch.index.codec.tsdb.SortedSetOrdinalWriter;
+import org.elasticsearch.index.codec.tsdb.SortedSetRunView;
 import org.elasticsearch.index.codec.tsdb.TsdbDocValuesProducer;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.RunTableSortedSetOrdinalReader;
 import org.elasticsearch.index.codec.tsdb.es95.runtable.RunTableSortedSetOrdinalWriter;
@@ -226,6 +227,15 @@ final class RunTableSortedSetCodec implements SortedSetOrdinalCodec {
                 return SortedSetRunTableLayout.open(meta, data.clone(), maxDoc);
             }
             return fallbackReader.ordinals(entry, maxOrd);
+        }
+
+        @Override
+        public SortedSetRunView runs(final SortedNumericEntry entry, long maxOrd) throws IOException {
+            if (entry.runTableMeta != null) {
+                final RunTableSortedSetOrdinalReader.Meta meta = (RunTableSortedSetOrdinalReader.Meta) entry.runTableMeta;
+                return SortedSetRunTableLayout.openRuns(meta, data.clone(), maxDoc);
+            }
+            return fallbackReader.runs(entry, maxOrd);
         }
     }
 }

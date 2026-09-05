@@ -1250,6 +1250,19 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
         return getSorted(entry, field.number == primarySortFieldNumber);
     }
 
+    /**
+     * Returns a run-granularity view of a {@code Sorted} field for run-granularity segment merge, or {@code null}
+     * when the field is absent in this segment or was not stored run-table encoded (so the merge falls back to
+     * the per-doc path).
+     */
+    public SortedRunView getSortedRunView(FieldInfo field) throws IOException {
+        final SortedEntry entry = sorted.get(field.number);
+        if (entry == null || entry.ordsEntry.docsWithFieldOffset == -2) {
+            return null;
+        }
+        return sortedCodec.createReader(readContext, data, maxDoc).runs(entry.ordsEntry, entry.termsDictEntry.termsDictSize);
+    }
+
     private SortedDocValues getSorted(SortedEntry entry, boolean valuesSorted) throws IOException {
         if (entry.ordsEntry.docsWithFieldOffset == -2) {
             return DocValues.emptySorted();
@@ -1851,6 +1864,19 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
         SortedNumericEntry entry = sortedNumerics.get(field.number);
         return getSortedNumeric(entry, AbstractTSDBDocValuesConsumer.NO_MAX_ORD, field, null);
+    }
+
+    /**
+     * Returns a run-granularity view of a multi-valued {@code SortedSet} field for run-granularity segment merge,
+     * or {@code null} when the field is absent, stored as a single-valued representation, or was not stored
+     * run-table encoded (so the merge falls back to the per-doc path).
+     */
+    public SortedSetRunView getSortedSetRunView(FieldInfo field) throws IOException {
+        final SortedSetEntry entry = sortedSets.get(field.number);
+        if (entry == null || entry.singleValueEntry != null) {
+            return null;
+        }
+        return sortedSetCodec.createReader(readContext, data, maxDoc).runs(entry.ordsEntry, entry.termsDictEntry.termsDictSize);
     }
 
     @Override
