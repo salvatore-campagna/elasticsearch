@@ -105,12 +105,17 @@ public class TSDBDocValuesMergeBenchmark {
         @Param("2000")
         private int numSeries;
 
+        // Number of source segments merged into one. Sweep this (at fixed docsPerSeries) to measure the k-way run
+        // merge cost as fragmentation rises; keep it fixed while sweeping docsPerSeries for the scaling curve.
+        @Param("16")
+        private int numSegments;
+
         private Directory directory;
 
         @Setup(Level.Trial)
         public void setup() throws IOException {
             directory = FSDirectory.open(Files.createTempDirectory("runtable-merge-"));
-            createIndex(directory, numSeries, docsPerSeries);
+            createIndex(directory, numSeries, docsPerSeries, numSegments);
         }
     }
 
@@ -121,8 +126,8 @@ public class TSDBDocValuesMergeBenchmark {
         }
     }
 
-    private static void createIndex(final Directory directory, int numSeries, int docsPerSeries) throws IOException {
-        final int commitInterval = Math.max(1, numSeries * docsPerSeries / 16);
+    private static void createIndex(final Directory directory, int numSeries, int docsPerSeries, int numSegments) throws IOException {
+        final int commitInterval = Math.max(1, numSeries * docsPerSeries / numSegments);
         try (IndexWriter indexWriter = new IndexWriter(directory, indexWriterConfig())) {
             int docCount = 0;
             for (int series = 0; series < numSeries; series++) {
