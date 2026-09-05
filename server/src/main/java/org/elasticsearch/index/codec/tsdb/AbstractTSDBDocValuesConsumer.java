@@ -20,6 +20,7 @@ import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.index.OrdinalMap;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
@@ -870,6 +871,14 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
             writeSkipIndex(field, valuesSource);
         }
         meta.writeByte((byte) 1); // multiValued (1 = multiValued)
+        // On the optimized merge path a run-table codec can produce the ordinal columns at run granularity from the
+        // source segments' runs; otherwise (flush, or an unsupported field) re-encode the per-doc ordinal stream.
+        if (valuesSource instanceof MergingTsdbDocValuesProducer merging
+            && merging.mergeState != null
+            && sortedSetCodec.createMergeWriter()
+                .writeMergedOrdinals(field, merging.mergeState, merging.ordinalMap, writeContext, maxOrd, merging.mergeStats)) {
+            return;
+        }
         writeEntry(field, valuesSource, accumulator -> writeSortedSetOrdinalField(field, valuesSource, maxOrd, accumulator, null));
     }
 
@@ -1005,7 +1014,12 @@ public abstract class AbstractTSDBDocValuesConsumer extends XDocValuesConsumer {
 
         SortedSetDocValues values = valuesProducer.getSortedSet(field);
         long maxOrd = values.getValueCount();
-        writeSortedSetMultiValueField(field, new TsdbDocValuesProducer(source.mergeStats) {
+        // On the optimized merge path the incoming producer carries the merge context; thread it through the
+        // ordinal-source wrapper so the run-table codec can merge at run granularity, otherwise it is null.
+        final MergingTsdbDocValuesProducer merging = valuesProducer instanceof MergingTsdbDocValuesProducer m ? m : null;
+        final MergeState mergeState = merging != null ? merging.mergeState : null;
+        final OrdinalMap ordinalMap = merging != null ? merging.ordinalMap : null;
+        writeSortedSetMultiValueField(field, new MergingTsdbDocValuesProducer(source.mergeStats, mergeState, ordinalMap) {
             @Override
             public SortedNumericDocValues getSortedNumeric(final FieldInfo field) throws IOException {
                 SortedSetDocValues values = valuesProducer.getSortedSet(field);

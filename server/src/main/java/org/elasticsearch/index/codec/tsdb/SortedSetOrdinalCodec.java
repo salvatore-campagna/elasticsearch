@@ -39,4 +39,15 @@ public interface SortedSetOrdinalCodec {
      * @return       the sorted-set ordinal field reader
      */
     SortedSetOrdinalReader createReader(NumericReadContext ctx, IndexInput data, int maxDoc);
+
+    /**
+     * Returns the merge-time writer that encodes a sorted-set field's ordinal columns at run granularity during
+     * segment merge. The default returns a no-op that reports "not handled", so a codec without a run-granularity
+     * merge falls back to the per-doc re-encode; run-table codecs override this.
+     *
+     * @return the sorted-set ordinal merge writer
+     */
+    default SortedSetOrdinalMergeWriter createMergeWriter() {
+        return (field, mergeState, ordinalMap, ctx, maxOrd, mergeStats) -> false;
+    }
 }

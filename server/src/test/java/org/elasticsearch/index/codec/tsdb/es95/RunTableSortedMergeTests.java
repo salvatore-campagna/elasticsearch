@@ -14,12 +14,14 @@ import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.SortedNumericDocValuesField;
+import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
@@ -47,6 +49,7 @@ public class RunTableSortedMergeTests extends ESTestCase {
     private static final String TIMESTAMP_FIELD = "@timestamp";
     private static final String LOW_CARD_FIELD = "state";
     private static final String PER_HOST_FIELD = "host.ip";
+    private static final String MULTI_VALUE_FIELD = "host.mac";
 
     public void testRunGranularityMergeProducesCorrectValues() throws IOException {
         final int numHosts = 64;
@@ -61,6 +64,9 @@ public class RunTableSortedMergeTests extends ESTestCase {
                     doc.add(new SortedDocValuesField(HOST_FIELD, new BytesRef(hostName(host))));
                     doc.add(new SortedDocValuesField(LOW_CARD_FIELD, new BytesRef(stateOf(host))));
                     doc.add(new SortedDocValuesField(PER_HOST_FIELD, new BytesRef(ipOf(host))));
+                    for (final String mac : macsOf(host)) {
+                        doc.add(new SortedSetDocValuesField(MULTI_VALUE_FIELD, new BytesRef(mac)));
+                    }
                     doc.add(new SortedNumericDocValuesField(TIMESTAMP_FIELD, 1_000L + i));
                     writer.addDocument(doc);
                     if (i % commitEvery == commitEvery - 1) {
@@ -78,6 +84,7 @@ public class RunTableSortedMergeTests extends ESTestCase {
                 final SortedDocValues host = leaf.getSortedDocValues(HOST_FIELD);
                 final SortedDocValues state = leaf.getSortedDocValues(LOW_CARD_FIELD);
                 final SortedDocValues ip = leaf.getSortedDocValues(PER_HOST_FIELD);
+                final SortedSetDocValues mac = leaf.getSortedSetDocValues(MULTI_VALUE_FIELD);
 
                 for (int doc = 0; doc < leaf.maxDoc(); doc++) {
                     assertTrue("host present at doc " + doc, host.advanceExact(doc));
@@ -88,6 +95,13 @@ public class RunTableSortedMergeTests extends ESTestCase {
 
                     assertTrue("ip present at doc " + doc, ip.advanceExact(doc));
                     assertEquals("doc " + doc, expectedIp(hostValue), ip.lookupOrd(ip.ordValue()).utf8ToString());
+
+                    assertTrue("mac present at doc " + doc, mac.advanceExact(doc));
+                    final String[] expectedMacs = expectedMacs(hostValue);
+                    assertEquals("doc " + doc + " mac count", expectedMacs.length, mac.docValueCount());
+                    for (final String expectedMac : expectedMacs) {
+                        assertEquals("doc " + doc, expectedMac, mac.lookupOrd(mac.nextOrd()).utf8ToString());
+                    }
                 }
             }
         }
@@ -105,12 +119,21 @@ public class RunTableSortedMergeTests extends ESTestCase {
         return "10.0.0." + host;
     }
 
+    private static String[] macsOf(int host) {
+        // Two distinct MACs per host, constant per host, ascending by term so they land in ordinal order.
+        return new String[] { "mac-" + (host % 4), "mac-" + ((host % 4) + 4) };
+    }
+
     private static String expectedState(String hostName) {
         return stateOf(Integer.parseInt(hostName.substring("host-".length())));
     }
 
     private static String expectedIp(String hostName) {
         return ipOf(Integer.parseInt(hostName.substring("host-".length())));
+    }
+
+    private static String[] expectedMacs(String hostName) {
+        return macsOf(Integer.parseInt(hostName.substring("host-".length())));
     }
 
     private static IndexWriterConfig indexWriterConfig() {
@@ -128,7 +151,7 @@ public class RunTableSortedMergeTests extends ESTestCase {
             fieldName,
             null,
             null,
-            fieldName.equals(LOW_CARD_FIELD) || fieldName.equals(PER_HOST_FIELD)
+            fieldName.equals(LOW_CARD_FIELD) || fieldName.equals(PER_HOST_FIELD) || fieldName.equals(MULTI_VALUE_FIELD)
         );
         final DocValuesFormat docValuesFormat = ES95TSDBDocValuesFormatFactory.create(true, true, false, resolver, true);
         config.setCodec(new Elasticsearch93Lucene104Codec() {

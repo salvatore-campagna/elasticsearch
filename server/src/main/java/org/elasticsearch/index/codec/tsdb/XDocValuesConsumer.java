@@ -118,7 +118,7 @@ public abstract class XDocValuesConsumer extends DocValuesConsumer {
         List<SortedSetDocValues> toMerge = selectLeavesToMerge(mergeFieldInfo, mergeState);
         OrdinalMap map = createOrdinalMapForSortedSetDV(toMerge, mergeState);
         // step 3: add field
-        addSortedSetField(mergeFieldInfo, new TsdbDocValuesProducer(mergeStats) {
+        addSortedSetField(mergeFieldInfo, new MergingTsdbDocValuesProducer(mergeStats, mergeState, map) {
             @Override
             public SortedSetDocValues getSortedSet(FieldInfo fieldInfo) throws IOException {
                 if (fieldInfo != mergeFieldInfo) {
