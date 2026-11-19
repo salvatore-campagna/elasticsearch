@@ -202,3 +202,15 @@ tasks.register("docValuesPrefetchReads", JavaExec) {
   dependsOn run.dependsOn
   mainClass = 'org.elasticsearch.benchmark.stateless.DocValuesPrefetchReadsReport'
 }
+
+// Reads a closed index with the Elasticsearch codecs on the classpath and writes what each field's doc values hold; runs outside JMH.
+tasks.register("inspectColumnar", JavaExec) {
+  def run = tasks.named("run", JavaExec).get()
+  classpath = run.classpath
+  executable = run.executable
+  jvmArgs run.jvmArgs
+  maxHeapSize = '4g'
+  systemProperties run.systemProperties
+  dependsOn run.dependsOn
+  mainClass = 'org.elasticsearch.benchmark.index.codec.columnar.ColumnarIndexInspector'
+}
