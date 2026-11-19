@@ -25,6 +25,7 @@ import org.elasticsearch.columnar.ColumnarFieldType;
 import org.elasticsearch.columnar.numeric.NumericPipeline;
 import org.elasticsearch.columnar.string.DictionaryPolicy;
 import org.elasticsearch.columnar.string.StringColumnOptions;
+import org.elasticsearch.columnar.string.SummaryPolicy;
 import org.elasticsearch.columnar.substrate.ChunkBounds;
 import org.elasticsearch.common.compress.CompressedXContent;
 import org.elasticsearch.common.settings.Setting;
@@ -64,8 +65,10 @@ import java.util.function.Function;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 
 public class PerFieldMapperCodecTests extends ESTestCase {
 
@@ -752,6 +755,59 @@ public class PerFieldMapperCodecTests extends ESTestCase {
         );
     }
 
+    public void testExperimentalStringLayoutOverridesThePolicies() throws IOException {
+        final IndexMode mode = randomColumnarMode();
+        final IndexVersion version = randomColumnarEligibleIndexVersion();
+        final StringColumnOptions adaptive = stringOptionsWithLayout(mode, version, "adaptive", "category");
+        assertEquals(StringColumnOptions.DEFAULT_DICTIONARY, adaptive.dictionary());
+        assertEquals(StringColumnOptions.DEFAULT_SUMMARY, adaptive.summary());
+
+        final StringColumnOptions plain = stringOptionsWithLayout(mode, version, "plain", "category");
+        assertEquals(DictionaryPolicy.NONE, plain.dictionary());
+        assertEquals(SummaryPolicy.NONE, plain.summary());
+
+        final StringColumnOptions surveyed = stringOptionsWithLayout(mode, version, "plain_surveyed", "category");
+        assertTrue("the survey must still run", surveyed.dictionary().enabled());
+        assertEquals(adaptive.dictionary().maxBytes(), surveyed.dictionary().maxBytes());
+        assertEquals(adaptive.dictionary().minCoverage(), surveyed.dictionary().minCoverage(), 0.0);
+        assertEquals("no dictionary may be admitted", 0.0, surveyed.dictionary().maxShareOfColumn(), 0.0);
+        assertEquals("the summary is the shipped one", adaptive.summary(), surveyed.summary());
+
+        final StringColumnOptions exact = stringOptionsWithLayout(mode, version, "exact", "category");
+        assertEquals("the dictionary policy is what the survey is compared against", adaptive.dictionary(), exact.dictionary());
+        assertThat(exact.summary().maxBytes(), greaterThan(adaptive.summary().maxBytes()));
+        assertEquals(adaptive.sizes(), exact.sizes());
+    }
+
+    public void testExperimentalCodecEs819KeepsKeywordFieldsOutOfTheColumnarCodec() throws IOException {
+        final IndexMode mode = randomColumnarMode();
+        final IndexVersion version = randomColumnarEligibleIndexVersion();
+        final Settings es819 = Settings.builder().put(IndexSettings.COLUMNAR_EXPERIMENT_DOC_VALUES_CODEC_SETTING.getKey(), "es819").build();
+        final PerFieldFormatSupplier supplier = createColumnarFormatSupplier(mode, version, es819);
+        assertThat(supplier.getDocValuesFormatForField("category"), not(instanceOf(ColumNARDocValuesFormat.class)));
+        assertNull(supplier.columnarFields().stringOptionsOf("category"));
+    }
+
+    public void testExperimentalStringLayoutLeavesTextColumnsAlone() throws IOException {
+        final IndexMode mode = randomColumnarMode();
+        final IndexVersion version = randomColumnarEligibleIndexVersion();
+        final StringColumnOptions adaptive = stringOptionsWithLayout(mode, version, "adaptive", "body");
+        assertEquals(DictionaryPolicy.NONE, adaptive.dictionary());
+        for (String layout : List.of("plain", "plain_surveyed", "exact")) {
+            assertEquals(layout, adaptive, stringOptionsWithLayout(mode, version, layout, "body"));
+        }
+    }
+
+    private StringColumnOptions stringOptionsWithLayout(
+        final IndexMode mode,
+        final IndexVersion version,
+        final String layout,
+        final String field
+    ) throws IOException {
+        final Settings settings = Settings.builder().put(IndexSettings.COLUMNAR_EXPERIMENT_STRING_LAYOUT_SETTING.getKey(), layout).build();
+        return createColumnarFormatSupplier(mode, version, settings).columnarFields().stringOptions(field, ColumnarFieldType.STRING);
+    }
+
     /** The field says how its string column is written, and a field that is not one says nothing. */
     public void testColumnarStringOptionsComeFromTheField() throws IOException {
         final PerFieldFormatSupplier supplier = createColumnarFormatSupplier(randomColumnarMode(), randomColumnarEligibleIndexVersion());
@@ -1020,7 +1076,12 @@ public class PerFieldMapperCodecTests extends ESTestCase {
     }
 
     private PerFieldFormatSupplier createColumnarFormatSupplier(final IndexMode mode, final IndexVersion indexVersion) throws IOException {
-        final Settings.Builder settings = Settings.builder();
+        return createColumnarFormatSupplier(mode, indexVersion, Settings.EMPTY);
+    }
+
+    private PerFieldFormatSupplier createColumnarFormatSupplier(final IndexMode mode, final IndexVersion indexVersion, final Settings extra)
+        throws IOException {
+        final Settings.Builder settings = Settings.builder().put(extra);
         settings.put(IndexSettings.MODE.getKey(), mode);
         settings.put(IndexMetadata.SETTING_VERSION_CREATED, indexVersion);
         final MapperService mapperService = MapperTestUtils.newMapperService(xContentRegistry(), createTempDir(), settings.build(), "test");

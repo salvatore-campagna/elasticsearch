@@ -19,7 +19,9 @@ import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.columnar.ColumnarFieldType;
 import org.elasticsearch.columnar.numeric.NumericPipeline;
 import org.elasticsearch.columnar.numeric.NumericPipelineTemplate;
+import org.elasticsearch.columnar.string.DictionaryPolicy;
 import org.elasticsearch.columnar.string.StringColumnOptions;
+import org.elasticsearch.columnar.string.SummaryPolicy;
 import org.elasticsearch.columnar.substrate.ChunkBounds;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.core.Nullable;
@@ -378,6 +380,8 @@ public class PerFieldFormatSupplier {
         /** Escaped values are reached one at a time, so they are chunked no larger than the values. */
         private static final ChunkBounds VECTORDB_ESCAPE_CHUNKS = new ChunkBounds(VECTORDB_MAX_CHUNK_BYTES, VECTORDB_MAX_VALUES_PER_CHUNK);
         private static final int VECTORDB_COMPRESSED_ORDINAL_BLOCK_SIZE = 512;
+        /** A summary cap above what any experiment column needs, so the survey holds every distinct term and never evicts. */
+        private static final int EXACT_SURVEY_SUMMARY_BYTES = 256 * 1024 * 1024;
 
         private final MapperService mapperService;
 
@@ -466,6 +470,22 @@ public class PerFieldFormatSupplier {
             };
         }
 
+        static StringColumnOptions withLayout(final StringColumnOptions options, final IndexSettings.ColumnarStringLayout layout) {
+            if (options.dictionary().enabled() == false) {
+                return options;
+            }
+            final DictionaryPolicy dictionary = options.dictionary();
+            return switch (layout) {
+                case ADAPTIVE -> options;
+                case PLAIN -> options.withPolicies(DictionaryPolicy.NONE, SummaryPolicy.NONE);
+                case PLAIN_SURVEYED -> options.withPolicies(
+                    new DictionaryPolicy(dictionary.maxBytes(), dictionary.minCoverage(), 0.0),
+                    options.summary()
+                );
+                case EXACT -> options.withPolicies(dictionary, SummaryPolicy.sized(EXACT_SURVEY_SUMMARY_BYTES));
+            };
+        }
+
         /**
          * How a string column is written, asked once per field by the codec. A field that is not stored as one is
          * never asked, and asking about one fails rather than guessing the options. The primary field of the index sort
@@ -478,9 +498,13 @@ public class PerFieldFormatSupplier {
                     "field [" + field + "] is written as a ColumNAR string column but its mapper has no string options"
                 );
             }
+            final StringColumnOptions layoutOptions = withLayout(
+                fieldOptions,
+                mapperService.getIndexSettings().columnarExperimentStringLayout()
+            );
             final StringColumnOptions options = mapperService.getIndexSettings().getIndexSortConfig().hasPrimarySortOnField(field)
-                ? fieldOptions.withPlainSkipIndex(true)
-                : fieldOptions;
+                ? layoutOptions.withPlainSkipIndex(true)
+                : layoutOptions;
             if (mapperService.getIndexSettings().getMode() != IndexMode.VECTORDB_COLUMNAR) {
                 return options;
             }

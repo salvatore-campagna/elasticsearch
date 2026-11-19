@@ -45,6 +45,13 @@ public class ColumnarDocValuesFormatSelectorTests extends ESTestCase {
         );
     }
 
+    public void testExperimentalCodecSettingTurnsTheColumnarCodecOff() {
+        final IndexMode mode = randomFrom(IndexMode.COLUMNAR, IndexMode.LOGSDB_COLUMNAR);
+        final IndexVersion version = randomEligibleVersion();
+        assertTrue(ColumnarDocValuesFormatSelector.useColumnarCodec(indexSettings(mode, version, experimentalCodec("columnar"))));
+        assertFalse(ColumnarDocValuesFormatSelector.useColumnarCodec(indexSettings(mode, version, experimentalCodec("es819"))));
+    }
+
     public void testWriteVersionFollowsTheIndexVersionCreated() {
         final IndexVersion justBefore = IndexVersionUtils.getPreviousVersion(IndexVersions.COLUMNAR_PLAIN_SKIP_INDEX);
         assertEquals(FormatVersion.BASELINE, ColumnarDocValuesFormatSelector.writeVersion(justBefore));
@@ -67,8 +74,17 @@ public class ColumnarDocValuesFormatSelectorTests extends ESTestCase {
         return IndexVersionUtils.randomVersionBetween(IndexVersions.COLUMNAR_CODEC_NO_FEATURE_FLAG, IndexVersion.current());
     }
 
+    private static Settings experimentalCodec(final String codec) {
+        return Settings.builder().put(IndexSettings.COLUMNAR_EXPERIMENT_DOC_VALUES_CODEC_SETTING.getKey(), codec).build();
+    }
+
     private static IndexSettings indexSettings(final IndexMode mode, final IndexVersion version) {
+        return indexSettings(mode, version, Settings.EMPTY);
+    }
+
+    private static IndexSettings indexSettings(final IndexMode mode, final IndexVersion version, final Settings extra) {
         final Settings.Builder builder = Settings.builder()
+            .put(extra)
             .put(IndexMetadata.SETTING_VERSION_CREATED, version)
             .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
             .put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, 0);

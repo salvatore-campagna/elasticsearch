@@ -77,6 +77,7 @@ public final class ColumnarDocValuesFormatSelector {
      */
     public static boolean useColumnarCodec(final IndexSettings indexSettings) {
         return indexSettings.getMode().isStrictColumnar()
-            && indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.COLUMNAR_CODEC_NO_FEATURE_FLAG);
+            && indexSettings.getIndexVersionCreated().onOrAfter(IndexVersions.COLUMNAR_CODEC_NO_FEATURE_FLAG)
+            && indexSettings.columnarExperimentDocValuesCodec() == IndexSettings.ColumnarDocValuesCodec.COLUMNAR;
     }
 }

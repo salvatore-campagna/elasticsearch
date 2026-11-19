@@ -285,6 +285,10 @@ public final class IndexScopedSettings extends AbstractScopedSettings {
         if (IndexSettings.BINARY_NUMERIC_DOC_VALUES_FEATURE_FLAG.isEnabled()) {
             settings.add(IndexSettings.BINARY_NUMERIC_DOC_VALUES_ENABLED_SETTING);
         }
+        if (IndexSettings.COLUMNAR_EXPERIMENTS_FEATURE_FLAG.isEnabled()) {
+            settings.add(IndexSettings.COLUMNAR_EXPERIMENT_DOC_VALUES_CODEC_SETTING);
+            settings.add(IndexSettings.COLUMNAR_EXPERIMENT_STRING_LAYOUT_SETTING);
+        }
         settings.add(IndexSettings.INDEX_DISABLED_BY_DEFAULT);
         settings.add(IndexSettings.USE_COLUMNAR_ID_BY_DEFAULT);
         settings.add(IndexSettings.INDEX_MAPPING_EXCLUDE_SOURCE_VECTORS_SETTING);

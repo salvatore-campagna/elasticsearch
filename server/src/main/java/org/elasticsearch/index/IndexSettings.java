@@ -1314,6 +1314,43 @@ public final class IndexSettings {
         Property.Final
     );
 
+    /** Gates the settings that choose the doc values codec and the string layout of a strict columnar index, for experiments only. */
+    public static final FeatureFlag COLUMNAR_EXPERIMENTS_FEATURE_FLAG = new FeatureFlag("columnar_experiments");
+
+    /** The codec that writes the doc values of the fields of a strict columnar index that the ColumNAR codec could store. */
+    public enum ColumnarDocValuesCodec {
+        COLUMNAR,
+        ES819
+    }
+
+    /** How the string columns of a strict columnar index choose their layout. */
+    public enum ColumnarStringLayout {
+        /** The shipped policies: the survey decides between PLAIN and DICTIONARY. */
+        ADAPTIVE,
+        /** No survey, no summary and no dictionary: every string column that would survey is PLAIN. */
+        PLAIN,
+        /** The shipped survey and summary with a share cap of zero: the survey runs, the summary is written and no dictionary is admitted. */
+        PLAIN_SURVEYED,
+        /** The shipped dictionary policy, with a summary cap large enough that the survey never evicts. */
+        EXACT
+    }
+
+    public static final Setting<ColumnarDocValuesCodec> COLUMNAR_EXPERIMENT_DOC_VALUES_CODEC_SETTING = Setting.enumSetting(
+        ColumnarDocValuesCodec.class,
+        "index.experimental.columnar.doc_values_codec",
+        ColumnarDocValuesCodec.COLUMNAR,
+        Property.IndexScope,
+        Property.Final
+    );
+
+    public static final Setting<ColumnarStringLayout> COLUMNAR_EXPERIMENT_STRING_LAYOUT_SETTING = Setting.enumSetting(
+        ColumnarStringLayout.class,
+        "index.experimental.columnar.string_layout",
+        ColumnarStringLayout.ADAPTIVE,
+        Property.IndexScope,
+        Property.Final
+    );
+
     /**
      * Legacy index setting, kept for 7.x BWC compatibility. This setting has no effect in 8.x. Do not use.
      * TODO: Remove in 9.0
@@ -1720,6 +1757,8 @@ public final class IndexSettings {
     private final boolean useTimeSeriesDocValuesFormatLargeBinaryBlockSize;
     private final boolean timeSeriesEs95CodecEnabled;
     private final boolean binaryNumericDocValues;
+    private final ColumnarDocValuesCodec columnarExperimentDocValuesCodec;
+    private final ColumnarStringLayout columnarExperimentStringLayout;
     private final boolean useEs812PostingsFormat;
     private final boolean disableSequenceNumbers;
     private final boolean indexDisabledByDefault;
@@ -1958,6 +1997,12 @@ public final class IndexSettings {
         timeSeriesEs95CodecEnabled = scopedSettings.get(TIME_SERIES_ES95_CODEC_ENABLED_SETTING);
         binaryNumericDocValues = BINARY_NUMERIC_DOC_VALUES_FEATURE_FLAG.isEnabled()
             && scopedSettings.get(BINARY_NUMERIC_DOC_VALUES_ENABLED_SETTING);
+        columnarExperimentDocValuesCodec = COLUMNAR_EXPERIMENTS_FEATURE_FLAG.isEnabled()
+            ? scopedSettings.get(COLUMNAR_EXPERIMENT_DOC_VALUES_CODEC_SETTING)
+            : ColumnarDocValuesCodec.COLUMNAR;
+        columnarExperimentStringLayout = COLUMNAR_EXPERIMENTS_FEATURE_FLAG.isEnabled()
+            ? scopedSettings.get(COLUMNAR_EXPERIMENT_STRING_LAYOUT_SETTING)
+            : ColumnarStringLayout.ADAPTIVE;
         useEs812PostingsFormat = scopedSettings.get(USE_ES_812_POSTINGS_FORMAT);
         intraMergeParallelismEnabled = scopedSettings.get(INTRA_MERGE_PARALLELISM_ENABLED_SETTING);
         useTimeSeriesSyntheticId = scopedSettings.get(SYNTHETIC_ID);
@@ -2865,6 +2910,22 @@ public final class IndexSettings {
      */
     public boolean useBinaryNumericDocValues() {
         return binaryNumericDocValues;
+    }
+
+    /**
+     * @return the codec that writes the columnar-eligible fields of this index; always {@link ColumnarDocValuesCodec#COLUMNAR} while the
+     *         {@code columnar_experiments} feature flag is off
+     */
+    public ColumnarDocValuesCodec columnarExperimentDocValuesCodec() {
+        return columnarExperimentDocValuesCodec;
+    }
+
+    /**
+     * @return how the string columns of this index choose their layout; always {@link ColumnarStringLayout#ADAPTIVE} while the
+     *         {@code columnar_experiments} feature flag is off
+     */
+    public ColumnarStringLayout columnarExperimentStringLayout() {
+        return columnarExperimentStringLayout;
     }
 
     /**
