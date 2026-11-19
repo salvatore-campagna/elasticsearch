@@ -52,6 +52,8 @@ import org.elasticsearch.columnar.substrate.BlockBytesCodec;
 import org.elasticsearch.columnar.substrate.BytesSink;
 import org.elasticsearch.columnar.substrate.ColumnOutputs;
 import org.elasticsearch.columnar.substrate.ColumnarCodecUtil;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -68,6 +70,9 @@ import java.util.TreeSet;
  */
 final class ColumNARDocValuesConsumer extends DocValuesConsumer {
 
+    private static final Logger logger = LogManager.getLogger(ColumNARDocValuesConsumer.class);
+
+    private final String segmentName;
     private final int maxDoc;
     private final Directory directory;
     private final IOContext context;
@@ -102,6 +107,7 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
         this.blockSize = blockSize;
         this.stringSelector = stringSelector;
         this.writeVersion = writeVersion;
+        this.segmentName = state.segmentInfo.name;
         this.maxDoc = state.segmentInfo.maxDoc();
         this.directory = state.directory;
         this.context = state.context;
@@ -167,7 +173,7 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             );
             case STRING -> {
                 final StringColumnOptions options = stringOptions(field, type);
-                writeStringColumn(field, type, options, () -> decodeBlobs(valuesProducer.getBinary(field), options), null);
+                writeStringColumn(field, type, options, () -> decodeBlobs(valuesProducer.getBinary(field), options), null, "flush");
             }
         }
     }
@@ -185,8 +191,22 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             case LONG, DOUBLE -> writeNumericColumn(field, type, () -> numericMergeCursor(field, mergeState));
             case STRING -> {
                 final StringColumnOptions options = stringOptions(field, type);
-                final Vocabulary.Terms vocabulary = mergedVocabulary(field, mergeState, options.dictionary(), options.summary()).terms();
-                writeStringColumn(field, type, options, () -> stringMergeCursor(field, mergeState, vocabulary, options), vocabulary);
+                final long decisionStarted = System.nanoTime();
+                final MergedVocabulary merged = mergedVocabulary(field, mergeState, options.dictionary(), options.summary());
+                final long decisionNanos = System.nanoTime() - decisionStarted;
+                final Vocabulary.Terms vocabulary = merged.terms();
+                final String path = "merge(source="
+                    + merged.source()
+                    + ", surveyEnabled="
+                    + options.dictionary().enabled()
+                    + ", hasDeletions="
+                    + hasDeletions(mergeState)
+                    + ", inputs="
+                    + mergeState.docValuesProducers.length
+                    + ", decisionNanos="
+                    + decisionNanos
+                    + ")";
+                writeStringColumn(field, type, options, () -> stringMergeCursor(field, mergeState, vocabulary, options), vocabulary, path);
             }
         }
     }
@@ -743,8 +763,11 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
         ColumnarFieldType type,
         StringColumnOptions options,
         IOSupplier<StringColumnValues> cursors,
-        Vocabulary.Terms known
+        Vocabulary.Terms known,
+        String path
     ) throws IOException {
+        final long writeStarted = System.nanoTime();
+        long surveyPassNanos = -1;
         StringColumnValues counter = cursors.get();
         StringColumnValues.Totals totals = counter.totals();
         Vocabulary.Survey survey = known == null ? null : new Vocabulary.Survey(known);
@@ -752,7 +775,9 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
         // sparse column's presence is written from that instead of from a cursor of its own.
         final DocsWithFieldSet docsWithField = totals == null ? new DocsWithFieldSet() : null;
         if (totals == null && known == null && options.dictionary().enabled()) {
+            final long surveyStarted = System.nanoTime();
             final Vocabulary.Counted counted = Vocabulary.countAndSurvey(counter, options.dictionary(), options.summary(), docsWithField);
+            surveyPassNanos = System.nanoTime() - surveyStarted;
             totals = counted.totals();
             survey = counted.survey();
         } else if (totals == null) {
@@ -798,6 +823,25 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             skipIndex
         );
         fields.add(new FieldEntry(field.number, type, options.singleValued(), metadata));
+        if (logger.isDebugEnabled()) {
+            final boolean dictionary = metadata instanceof StringColumnMetadata.Dictionary;
+            final StringColumnMetadata.Dictionary dictionaryMetadata = dictionary ? (StringColumnMetadata.Dictionary) metadata : null;
+            logger.debug(
+                "string column written segment [{}] field [{}] path [{}] layout [{}] values [{}] dictionaryTerms [{}] escapes [{}] "
+                    + "summary [{}] bestCoverageShare [{}] surveyPassNanos [{}] writeNanos [{}]",
+                segmentName,
+                field.name,
+                path,
+                metadata.layout(),
+                metadata.numValues(),
+                dictionary ? dictionaryMetadata.dictionarySize() : 0,
+                dictionary && dictionaryMetadata.hasEscapes() ? dictionaryMetadata.escapes().numValues() : 0,
+                metadata.hasSummary(),
+                metadata.hasSummary() ? metadata.summary().bestCoverage().share() : -1.0,
+                surveyPassNanos,
+                System.nanoTime() - writeStarted
+            );
+        }
     }
 
     @Override

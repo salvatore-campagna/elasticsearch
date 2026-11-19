@@ -23,6 +23,8 @@ dependencies {
   api project(":libs:lucene-store")
   // CheckedFunction, on the IndexInputUtils slice API.
   implementation project(":libs:core")
+  // Experiment diagnostics only: DEBUG lines at the string column write and the merge decision.
+  implementation project(":libs:logging")
 
   testImplementation(project(":test:framework")) {
     exclude group: 'org.elasticsearch', module: 'columnar'

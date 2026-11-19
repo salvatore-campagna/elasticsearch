@@ -19,6 +19,7 @@ module org.elasticsearch.columnar {
     requires org.elasticsearch.zstd;
     requires transitive org.elasticsearch.lucene.store;
     requires org.elasticsearch.base;
+    requires org.elasticsearch.logging;
 
     exports org.elasticsearch.columnar;
     exports org.elasticsearch.columnar.substrate;
