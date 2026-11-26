@@ -30,6 +30,7 @@ import java.util.Set;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
 
 public class ColumnarIndexInspectorTests extends ESTestCase {
@@ -62,6 +63,16 @@ public class ColumnarIndexInspectorTests extends ESTestCase {
         assertThat(Integer.parseInt(adaptive.get("dictionary_terms")), greaterThan(0));
         assertThat(plain.get("dictionary_terms"), equalTo("0"));
         assertThat(plain.get("has_summary"), equalTo("false"));
+
+        assertThat(adaptive.get("value_multiset_hash"), equalTo(plain.get("value_multiset_hash")));
+        assertThat(adaptive.get("value_sequence_hash"), equalTo(plain.get("value_sequence_hash")));
+        assertThat(adaptive.get("dictionary_hash"), not(equalTo("")));
+        assertThat(adaptive.get("dictionary_set_hash"), not(equalTo("")));
+        assertThat(Long.parseLong(adaptive.get("dictionary_term_bytes")), greaterThan(0L));
+        assertThat(plain.get("dictionary_hash"), equalTo(""));
+        final long policyCap = Long.parseLong(adaptive.get("policy_cap_bytes"));
+        assertThat(policyCap, lessThanOrEqualTo(512L * 1024));
+        assertThat(Double.parseDouble(adaptive.get("exact_best_coverage_policy_cap")), lessThanOrEqualTo(1.0));
     }
 
     public void testReportsTheBytesOfEachFileKind() throws IOException {

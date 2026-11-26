@@ -23,6 +23,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.StringHelper;
 import org.elasticsearch.columnar.string.ColumnarStringBinaryDocValues;
 import org.elasticsearch.columnar.string.StringBinaryPayload;
 import org.elasticsearch.columnar.string.StringColumnReader;
@@ -55,12 +56,15 @@ public final class ColumnarIndexInspector {
     private static final long DICTIONARY_BUDGET_BYTES = 512 * 1024;
     private static final double MIN_COVERAGE = 0.9;
     private static final int MAX_DISTINCT = 2_000_000;
+    private static final double MAX_SHARE_OF_COLUMN = 0.2;
+    private static final int FIELD_COLUMNS = 34;
 
     private static final String SEGMENT_HEADER = "segment,max_doc,live_docs,codec,compound,scope,extension,files,bytes\n";
     private static final String FIELD_HEADER = "segment,field,dv_format,layout,values,docs_with_field,value_bytes,dictionary_terms,"
         + "escapes,has_summary,summary_values,summary_terms,summary_term_bytes,best_coverage_share,scanned_values,null_slots,runs,"
         + "ascending_steps,descending_steps,distinct,distinct_capped,top1_share,top16_share,singleton_share,mean_bytes,"
-        + "exact_best_coverage_share,exact_term_bytes_for_min_coverage\n";
+        + "exact_best_coverage_share,exact_term_bytes_for_min_coverage,value_multiset_hash,value_sequence_hash,dictionary_hash,"
+        + "dictionary_set_hash,dictionary_term_bytes,policy_cap_bytes,exact_best_coverage_policy_cap\n";
 
     private ColumnarIndexInspector() {}
 
@@ -165,10 +169,16 @@ public final class ColumnarIndexInspector {
             row.add(Integer.toString(summaryTerms.size()));
             row.add(Long.toString(summaryTermBytes));
             row.add(column.bestCoverage().known() ? Double.toString(column.bestCoverage().share()) : "");
-            scan((ColumnarStringBinaryDocValues) segment.getBinaryDocValues(info.name), row);
+            final long policyCap = Math.min(DICTIONARY_BUDGET_BYTES, (long) (MAX_SHARE_OF_COLUMN * column.valueBytes()));
+            final long[] scanned = scan((ColumnarStringBinaryDocValues) segment.getBinaryDocValues(info.name), row, policyCap);
+            row.add(Long.toHexString(scanned[0]));
+            row.add(Long.toHexString(scanned[1]));
+            addDictionary(columnar, column, row);
+            row.add(Long.toString(policyCap));
+            row.add(scanned[3] == 0 ? "" : Double.toString((double) scanned[2] / scanned[3]));
         } else {
             row.add("");
-            while (row.size() < 27) {
+            while (row.size() < FIELD_COLUMNS) {
                 row.add("");
             }
         }
@@ -176,7 +186,49 @@ public final class ColumnarIndexInspector {
         out.write('\n');
     }
 
-    private static void scan(final ColumnarStringBinaryDocValues docValues, final List<String> row) throws IOException {
+    /** The hash of the exact bytes of a term, wide enough that a collision among the terms of one column is not a concern. */
+    private static long hash64(final BytesRef term) {
+        final long high = StringHelper.murmurhash3_x86_32(term, 0x9747b28c);
+        final long low = StringHelper.murmurhash3_x86_32(term, 0x1b873593);
+        return (high << 32) | (low & 0xffffffffL);
+    }
+
+    /** Adds the hash of the dictionary terms in ordinal order, the hash of the same terms as a set, and their bytes. */
+    private static void addDictionary(
+        final ColumnarStringBinaryDocValues docValues,
+        final StringColumnReader column,
+        final List<String> row
+    ) throws IOException {
+        if (column.hasDictionary() == false) {
+            row.add("");
+            row.add("");
+            row.add("");
+            return;
+        }
+        long ordered = 1;
+        long set = 0;
+        long bytes = 0;
+        BytesRef term = new BytesRef();
+        for (int ordinal = 0; ordinal < column.dictionarySize(); ordinal++) {
+            term = docValues.termAt(ordinal, term);
+            final long hash = hash64(term);
+            ordered = ordered * 31 + hash;
+            set += hash;
+            bytes += term.length;
+        }
+        row.add(Long.toHexString(ordered));
+        row.add(Long.toHexString(set));
+        row.add(Long.toString(bytes));
+    }
+
+    /**
+     * Scans the values and appends their distribution columns to the row.
+     *
+     * @return the order-independent hash of the values, the order-dependent hash of the values and their nulls, the values covered
+     *         by the most frequent terms that fit {@code policyCapBytes}, and the number of values
+     */
+    private static long[] scan(final ColumnarStringBinaryDocValues docValues, final List<String> row, final long policyCapBytes)
+        throws IOException {
         final StringBinaryPayload.Decoder decoder = new StringBinaryPayload.Decoder();
         final Map<BytesRef, long[]> counts = new HashMap<>();
         final boolean singleValued = docValues.singleValued();
@@ -188,6 +240,8 @@ public final class ColumnarIndexInspector {
         long descending = 0;
         boolean capped = false;
         BytesRef previous = null;
+        long multiset = 0;
+        long sequence = 1;
         for (int doc = docValues.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = docValues.nextDoc()) {
             final BytesRef blob = docValues.binaryValue();
             final int slots = singleValued ? 1 : decoder.reset(blob);
@@ -195,8 +249,12 @@ public final class ColumnarIndexInspector {
                 final BytesRef value = singleValued ? blob : decoder.next();
                 if (value == null) {
                     nulls++;
+                    sequence = sequence * 31 - 1;
                     continue;
                 }
+                final long valueHash = hash64(value);
+                multiset += valueHash;
+                sequence = sequence * 31 + valueHash;
                 values++;
                 bytes += value.length;
                 final int order = previous == null ? 0 : previous.compareTo(value);
@@ -228,11 +286,17 @@ public final class ColumnarIndexInspector {
         long coveredForBar = 0;
         long barBytes = 0;
         long barBytesNeeded = -1;
+        long policyCapUsed = 0;
+        long coveredInPolicyCap = 0;
         for (Map.Entry<BytesRef, long[]> entry : byCount) {
             final long cost = Math.max(1, entry.getKey().length);
             if (budgetBytes + cost <= DICTIONARY_BUDGET_BYTES) {
                 budgetBytes += cost;
                 coveredInBudget += entry.getValue()[0];
+            }
+            if (policyCapUsed + cost <= policyCapBytes) {
+                policyCapUsed += cost;
+                coveredInPolicyCap += entry.getValue()[0];
             }
             if (barBytesNeeded < 0) {
                 barBytes += cost;
@@ -266,5 +330,6 @@ public final class ColumnarIndexInspector {
         row.add(values == 0 ? "" : Double.toString((double) bytes / values));
         row.add(values == 0 ? "" : Double.toString((double) coveredInBudget / values));
         row.add(values == 0 ? "" : Long.toString(barBytesNeeded));
+        return new long[] { multiset, sequence, coveredInPolicyCap, values };
     }
 }
