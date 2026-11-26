@@ -22,6 +22,7 @@ import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.Bits;
@@ -73,6 +74,7 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
     private static final Logger logger = LogManager.getLogger(ColumNARDocValuesConsumer.class);
 
     private final String segmentName;
+    private final String location;
     private final int maxDoc;
     private final Directory directory;
     private final IOContext context;
@@ -108,6 +110,7 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
         this.stringSelector = stringSelector;
         this.writeVersion = writeVersion;
         this.segmentName = state.segmentInfo.name;
+        this.location = FilterDirectory.unwrap(state.segmentInfo.dir).toString();
         this.maxDoc = state.segmentInfo.maxDoc();
         this.directory = state.directory;
         this.context = state.context;
@@ -843,9 +846,10 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             final boolean dictionary = metadata instanceof StringColumnMetadata.Dictionary;
             final StringColumnMetadata.Dictionary dictionaryMetadata = dictionary ? (StringColumnMetadata.Dictionary) metadata : null;
             logger.debug(
-                "string column written segment [{}] field [{}] path [{}] layout [{}] values [{}] dictionaryTerms [{}] escapes [{}] "
+                "string column written location [{}] segment [{}] field [{}] path [{}] layout [{}] values [{}] dictionaryTerms [{}] escapes [{}] "
                     + "summary [{}] bestCoverageShare [{}] surveyPassNanos [{}] writeNanos [{}] bytes [data={}, addressing={}, "
                     + "lengths={}, navigation={}] summaryBytes [{}] diagnostics [{}]",
+                location,
                 segmentName,
                 field.name,
                 path,
