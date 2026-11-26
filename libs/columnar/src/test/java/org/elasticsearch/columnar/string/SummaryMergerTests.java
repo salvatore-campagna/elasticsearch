@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 
 /**
@@ -220,6 +221,34 @@ public class SummaryMergerTests extends ESTestCase {
         merger.add(200, 560, BestCoverage.UNKNOWN, held, counted);
 
         assertEquals(SummaryMerger.Outcome.NO_DICTIONARY, merger.decide(true).outcome());
+    }
+
+    public void testARefusalSaysWhetherTheBoundProvedIt() {
+        final DictionaryPolicy provedPolicy = new DictionaryPolicy(1, 0.5, 1.0);
+        final SummaryMerger proved = new SummaryMerger(provedPolicy, ROOMY_SUMMARY);
+        proved.add(1001, 1502, BestCoverage.UNKNOWN, terms("a", "bb"), counts(500L, 501L));
+        final SummaryMerger.Decision rejected = proved.decide(true);
+        assertEquals(SummaryMerger.Reason.REJECTED_BY_BOUND, rejected.reason());
+        assertTrue(provedPolicy.rulesOut(rejected.bestCoverage()));
+        assertThat(rejected.vocabulary().diagnostics(), containsString("reason=REJECTED_BY_BOUND"));
+
+        final SummaryMerger unproved = mergerCappedAt(100);
+        final List<BytesRef> held = terms("head");
+        final List<Long> counted = counts(80L);
+        for (int i = 0; i < 120; i++) {
+            held.add(new BytesRef(Integer.toString(i, 36) + "z"));
+            counted.add(1L);
+        }
+        unproved.add(200, 560, BestCoverage.UNKNOWN, held, counted);
+        final SummaryMerger.Decision plain = unproved.decide(true);
+        assertEquals(SummaryMerger.Outcome.NO_DICTIONARY, plain.outcome());
+        assertEquals(SummaryMerger.Reason.NOT_ADMITTED_NO_PROOF, plain.reason());
+        assertFalse(new DictionaryPolicy(100, 0.5, 1.0).rulesOut(plain.bestCoverage()));
+        assertThat(plain.vocabulary().diagnostics(), containsString("reason=NOT_ADMITTED_NO_PROOF"));
+
+        final SummaryMerger witness = mergerCappedAt(4);
+        witness.add(250, 700, BestCoverage.UNKNOWN, terms("dead"), counts(150L));
+        assertEquals(SummaryMerger.Reason.ADMITTED_BY_COUNTS, witness.decide(true).reason());
     }
 
     public void testABoundBelowTheBarRefusesAndKeepsTheTerms() {

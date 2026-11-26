@@ -69,6 +69,7 @@ public final class Vocabulary {
      * @param bestCoverage    the most a dictionary could name here, or {@link BestCoverage#UNKNOWN}
      *                        where none could be taken
      * @param counts          how often each id was seen, as a lower bound, or null when unknown
+     * @param diagnostics     what the survey or the merge decision observed, for logging, or null
      */
     public record Terms(
         BytesRefHash terms,
@@ -80,7 +81,8 @@ public final class Vocabulary {
         long columnBytes,
         long numValues,
         BestCoverage bestCoverage,
-        long[] counts
+        long[] counts,
+        String diagnostics
     ) {
         /** Whether counts were recorded for these terms. */
         public boolean hasCounts() {
@@ -137,7 +139,25 @@ public final class Vocabulary {
                 columnBytes,
                 numValues,
                 tighter,
-                counts
+                counts,
+                diagnostics
+            );
+        }
+
+        /** These terms carrying {@code observed} in place of what they carried. */
+        public Terms withDiagnostics(String observed) {
+            return new Terms(
+                terms,
+                dictionaryIds,
+                summaryIds,
+                ordinalOfId,
+                coverage,
+                dictionaryBytes,
+                columnBytes,
+                numValues,
+                bestCoverage,
+                counts,
+                observed
             );
         }
     }
@@ -188,7 +208,8 @@ public final class Vocabulary {
             columnBytes,
             numValues,
             bestCoverage,
-            counts
+            counts,
+            null
         );
     }
 
@@ -230,7 +251,7 @@ public final class Vocabulary {
             TermQuota.forMergedSummary(summaryPolicy),
             TermQuota.forMergedSummaryTail(dictionaryPolicy, columnBytes)
         );
-        return selected(selection, dictionaryIds, summaryIds, dictionaryPolicy, columnBytes, numValues);
+        return selected(selection, dictionaryIds, summaryIds, dictionaryPolicy, columnBytes, numValues, null);
     }
 
     /**
@@ -258,7 +279,8 @@ public final class Vocabulary {
             combined.columnBytes(),
             combined.numValues(),
             bestCoverage,
-            combined.counts()
+            combined.counts(),
+            combined.diagnostics()
         );
     }
 
@@ -268,7 +290,8 @@ public final class Vocabulary {
         int[] summaryIds,
         DictionaryPolicy dictionaryPolicy,
         long columnBytes,
-        long numValues
+        long numValues,
+        String diagnostics
     ) {
         final BytesRefHash terms = selection.terms();
         // Indexed by id, so a term the survey saw but did not keep is told apart from ordinal zero.
@@ -297,7 +320,8 @@ public final class Vocabulary {
             columnBytes,
             numValues,
             bestCoverage,
-            selection.occurrences()
+            selection.occurrences(),
+            diagnostics
         );
     }
 
@@ -317,6 +341,11 @@ public final class Vocabulary {
         private long tableBytes;
         private long numValues;
         private long columnBytes;
+        private long peakTableBytes;
+        private long evictionRounds;
+        private long evictedTerms;
+        private long turnedAwayArrivals;
+        private long turnedAwayValues;
         // A column that arrives in term order repeats each value in a run, so the term a value takes is
         // almost always the one before it. Comparing against that costs a length check and settles it
         // without a hash probe; only a run boundary pays for one.
@@ -362,6 +391,8 @@ public final class Vocabulary {
             if (hasPrevious && previous.get().bytesEquals(value)) {
                 if (previousId != ABSENT) {
                     counts[previousId]++;
+                } else {
+                    turnedAwayValues++;
                 }
                 return;
             }
@@ -370,8 +401,11 @@ public final class Vocabulary {
                 if (tableBytes + value.length > tableBound) {
                     if (terms.size() > 0) {
                         final long[] freed = { 0 };
+                        final int heldBefore = terms.size();
                         counts = evictLeastFrequent(terms, counts, freed);
                         tableBytes -= freed[0];
+                        evictionRounds++;
+                        evictedTerms += heldBefore - terms.size();
                     }
                     if (tableBytes + value.length > tableBound) {
                         // Nothing could be displaced: either every term held occurs at least as often as
@@ -380,6 +414,8 @@ public final class Vocabulary {
                         previous.copyBytes(value);
                         previousId = ABSENT;
                         hasPrevious = true;
+                        turnedAwayArrivals++;
+                        turnedAwayValues++;
                         return;
                     }
                 }
@@ -389,6 +425,7 @@ public final class Vocabulary {
                 }
                 counts = ArrayUtil.grow(counts, id + 1);
                 tableBytes += value.length;
+                peakTableBytes = Math.max(peakTableBytes, tableBytes);
             }
             counts[id]++;
             // Copied only here, so a run costs one copy rather than one per value.
@@ -414,7 +451,27 @@ public final class Vocabulary {
             if (dictionaryIds.length == 0 && summaryIds.length == 0) {
                 return null;
             }
-            return selected(selection, dictionaryIds, summaryIds, dictionaryPolicy, columnBytes, numValues);
+            return selected(selection, dictionaryIds, summaryIds, dictionaryPolicy, columnBytes, numValues, surveyDiagnostics());
+        }
+
+        private String surveyDiagnostics() {
+            return "survey[tableBound="
+                + tableBound
+                + ",peakTableBytes="
+                + peakTableBytes
+                + ",heldTerms="
+                + terms.size()
+                + ",evictionRounds="
+                + evictionRounds
+                + ",evictedTerms="
+                + evictedTerms
+                + ",turnedAwayArrivals="
+                + turnedAwayArrivals
+                + ",turnedAwayValues="
+                + turnedAwayValues
+                + ",values="
+                + numValues
+                + "]";
         }
     }
 

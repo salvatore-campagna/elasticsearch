@@ -15,9 +15,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
@@ -553,5 +558,34 @@ public class VocabularyTests extends ColumnarStringTestCase {
 
     private static Vocabulary.Terms survey(List<BytesRef> values, DictionaryPolicy policy, SummaryPolicy summaryPolicy) throws IOException {
         return Vocabulary.survey(cursor(values.toArray(BytesRef[]::new)), policy, summaryPolicy);
+    }
+
+    public void testASurveyReportsWhatItEvictedUnderBudgetPressure() {
+        final Vocabulary.Surveyor tight = Vocabulary.surveyor(new DictionaryPolicy(256, 0.5, 1.0), SummaryPolicy.sized(256));
+        for (int round = 0; round < 200; round++) {
+            tight.accept(new BytesRef("head"));
+            tight.accept(new BytesRef("tail" + String.format(Locale.ROOT, "%08d", round)));
+        }
+        final String pressed = tight.finish().diagnostics();
+        assertThat(pressed, containsString("tableBound=256"));
+        assertThat("the table is bounded", diagnosticValue(pressed, "peakTableBytes"), lessThanOrEqualTo(256L));
+        assertThat("the tail displaced itself", diagnosticValue(pressed, "evictionRounds"), greaterThan(0L));
+        assertThat(diagnosticValue(pressed, "evictedTerms"), greaterThan(0L));
+
+        final Vocabulary.Surveyor roomy = Vocabulary.surveyor(new DictionaryPolicy(64 * 1024, 0.5, 1.0), SummaryPolicy.sized(64 * 1024));
+        for (int round = 0; round < 200; round++) {
+            roomy.accept(new BytesRef("head"));
+            roomy.accept(new BytesRef("tail" + String.format(Locale.ROOT, "%08d", round)));
+        }
+        final String fitting = roomy.finish().diagnostics();
+        assertEquals(0L, diagnosticValue(fitting, "evictionRounds"));
+        assertEquals(0L, diagnosticValue(fitting, "turnedAwayValues"));
+        assertEquals(201L, diagnosticValue(fitting, "heldTerms"));
+    }
+
+    private static long diagnosticValue(String diagnostics, String name) {
+        final Matcher matcher = Pattern.compile(name + "=(\\d+)").matcher(diagnostics);
+        assertTrue(name + " in " + diagnostics, matcher.find());
+        return Long.parseLong(matcher.group(1));
     }
 }

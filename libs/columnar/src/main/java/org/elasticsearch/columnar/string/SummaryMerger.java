@@ -35,7 +35,19 @@ public final class SummaryMerger {
         UNDECIDED
     }
 
-    public record Decision(Outcome outcome, Vocabulary.Terms vocabulary, BestCoverage bestCoverage) {}
+    /** Why the outcome was reached, which {@link Outcome#NO_DICTIONARY} alone does not say. */
+    public enum Reason {
+        /** The summed counts reached the coverage bar and the size bar: admitted on a lower bound. */
+        ADMITTED_BY_COUNTS,
+        /** The upper bound fell short of the coverage bar: no dictionary can reach it. A proof. */
+        REJECTED_BY_BOUND,
+        /** The summed counts did not reach the bar but the bound does not rule it out: written plain on no proof either way. */
+        NOT_ADMITTED_NO_PROOF,
+        /** The summaries could not speak. */
+        UNDECIDED
+    }
+
+    public record Decision(Outcome outcome, Vocabulary.Terms vocabulary, BestCoverage bestCoverage, Reason reason) {}
 
     private final DictionaryPolicy dictionaryPolicy;
     private final SummaryPolicy summaryPolicy;
@@ -47,6 +59,10 @@ public final class SummaryMerger {
     private long columnBytes;
     private BestCoverage summedBestCoverage;
     private boolean everyInputSummarised = true;
+    private int inputs;
+    private long inputSummaryTerms;
+    private long trimRounds;
+    private long trimmedTerms;
 
     /**
      * @param dictionaryPolicy the policy the merged column's dictionary would be held to
@@ -70,6 +86,8 @@ public final class SummaryMerger {
      * @param counts      how often it saw each of them, positionally matching {@code terms}
      */
     public void add(long inputValues, long inputBytes, BestCoverage bestCoverage, List<BytesRef> terms, List<Long> counts) {
+        inputs++;
+        inputSummaryTerms += terms.size();
         numValues += inputValues;
         columnBytes += inputBytes;
         summedBestCoverage = summedBestCoverage == null ? bestCoverage : summedBestCoverage.plus(bestCoverage);
@@ -116,7 +134,7 @@ public final class SummaryMerger {
         // bound the column from above nor witness it from below, and a dictionary built from them could
         // name only terms that are gone. The values decide instead.
         if (dictionaryPolicy.enabled() == false || countsAreLive == false || everyInputSummarised == false || numValues == 0) {
-            return new Decision(Outcome.UNDECIDED, null, BestCoverage.UNKNOWN);
+            return new Decision(Outcome.UNDECIDED, null, BestCoverage.UNKNOWN, Reason.UNDECIDED);
         }
         final Vocabulary.Terms combined = retainedCounts.isEmpty()
             ? null
@@ -127,15 +145,54 @@ public final class SummaryMerger {
             ? inheritedBound.tighter(recomputedBound)
             : recomputedBound;
         if (combined != null && dictionaryPolicy.worthKeeping(combined.coverage(), combined.dictionaryBytes(), combined.columnBytes())) {
-            return new Decision(Outcome.DICTIONARY, combined.withBestCoverage(upperBound), upperBound);
+            return new Decision(
+                Outcome.DICTIONARY,
+                combined.withBestCoverage(upperBound).withDiagnostics(describe(Reason.ADMITTED_BY_COUNTS, combined, upperBound)),
+                upperBound,
+                Reason.ADMITTED_BY_COUNTS
+            );
         }
         // NOTE: necessary for a survey to be worth it, not a proof the summaries are right. It over-states
         // while a merged summary bounds terms held once by the column's share rather than its own cap.
         final boolean summaryCapCoversTheDictionary = summaryPolicy.maxBytes() >= dictionaryPolicy.maxBytes();
         if (dictionaryPolicy.rulesOut(upperBound) || (combined != null && summaryCapCoversTheDictionary)) {
-            return new Decision(Outcome.NO_DICTIONARY, Vocabulary.withoutDictionary(combined, upperBound), upperBound);
+            final Reason reason = dictionaryPolicy.rulesOut(upperBound) ? Reason.REJECTED_BY_BOUND : Reason.NOT_ADMITTED_NO_PROOF;
+            final Vocabulary.Terms without = Vocabulary.withoutDictionary(combined, upperBound);
+            return new Decision(Outcome.NO_DICTIONARY, without.withDiagnostics(describe(reason, combined, upperBound)), upperBound, reason);
         }
-        return new Decision(Outcome.UNDECIDED, null, upperBound);
+        return new Decision(Outcome.UNDECIDED, null, upperBound, Reason.UNDECIDED);
+    }
+
+    private String describe(Reason reason, Vocabulary.Terms combined, BestCoverage upperBound) {
+        return "merge[reason="
+            + reason
+            + ",inputs="
+            + inputs
+            + ",inputSummaryTerms="
+            + inputSummaryTerms
+            + ",retainedTerms="
+            + retainedCounts.size()
+            + ",trimRounds="
+            + trimRounds
+            + ",trimmedTerms="
+            + trimmedTerms
+            + ",summedCoverage="
+            + (combined == null ? -1.0 : combined.coverage())
+            + ",minCoverage="
+            + dictionaryPolicy.minCoverage()
+            + ",upperBoundShare="
+            + (upperBound.known() ? upperBound.share() : -1.0)
+            + ",upperBoundValid="
+            + upperBound.validFor(dictionaryPolicy.maxBytes())
+            + ",combinedDictionaryBytes="
+            + (combined == null ? -1 : combined.dictionaryBytes())
+            + ",columnBytes="
+            + columnBytes
+            + ",sizeShareOk="
+            + (combined != null && combined.dictionaryBytes() <= dictionaryPolicy.maxShareOfColumn() * columnBytes)
+            + ",values="
+            + numValues
+            + "]";
     }
 
     private long trimToBound() {
@@ -147,6 +204,8 @@ public final class SummaryMerger {
             bytes += TermQuota.cost(ranked.get(kept).getKey());
             kept++;
         }
+        trimRounds++;
+        trimmedTerms += ranked.size() - kept;
         for (int i = kept; i < ranked.size(); i++) {
             retainedCounts.remove(ranked.get(i).getKey());
         }

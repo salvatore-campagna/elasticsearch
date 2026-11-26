@@ -374,9 +374,33 @@ public final class StringColumnWriter {
         final boolean dictionaryHoldsTheTerms = metadata instanceof StringColumnMetadata.Dictionary column
             && vocabulary.summaryIsDictionary()
             && column.dictionarySize() == vocabulary.summarySize();
-        return metadata.withSummary(
-            SummaryFormat.write(vocabulary, dictionaryHoldsTheTerms, nonNullValueCount, chunkCodec, sizes, outputs)
+        final long before = outputBytes(outputs);
+        final StringColumnMetadata.Summary summary = SummaryFormat.write(
+            vocabulary,
+            dictionaryHoldsTheTerms,
+            nonNullValueCount,
+            chunkCodec,
+            sizes,
+            outputs
         );
+        SUMMARY_BYTES.set(outputBytes(outputs) - before);
+        return metadata.withSummary(summary);
+    }
+
+    private static final ThreadLocal<Long> SUMMARY_BYTES = new ThreadLocal<>();
+
+    /** The bytes the last summary written on this thread occupied, or zero if none was, and forgets it. */
+    public static long takeSummaryBytes() {
+        final Long bytes = SUMMARY_BYTES.get();
+        SUMMARY_BYTES.remove();
+        return bytes == null ? 0 : bytes;
+    }
+
+    /** The bytes written to all four outputs so far. */
+    public static long outputBytes(ColumnOutputs outputs) {
+        return outputs.data().getFilePointer() + outputs.addressing().getFilePointer() + outputs.lengths().getFilePointer() + outputs
+            .navigation()
+            .getFilePointer();
     }
 
     /**

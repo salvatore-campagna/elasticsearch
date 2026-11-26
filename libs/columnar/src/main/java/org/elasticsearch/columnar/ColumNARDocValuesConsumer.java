@@ -316,6 +316,14 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
         }
     }
 
+    private static long[] outputPointers(ColumnOutputs outputs) {
+        return new long[] {
+            outputs.data().getFilePointer(),
+            outputs.addressing().getFilePointer(),
+            outputs.lengths().getFilePointer(),
+            outputs.navigation().getFilePointer() };
+    }
+
     private static final MergedVocabulary SURVEYED = new MergedVocabulary(MergedVocabulary.Source.SURVEY, null);
 
     /**
@@ -810,6 +818,8 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             totals = new StringColumnValues.Totals(numDocsWithField, numValues, numNullSlots, minLength, maxLength, oneSlotADocument);
         }
 
+        StringColumnWriter.takeSummaryBytes();
+        final long[] bytesBefore = outputPointers(outputs);
         StringColumnMetadata metadata = StringColumnWriter.write(
             maxDoc,
             totals,
@@ -823,12 +833,19 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             skipIndex
         );
         fields.add(new FieldEntry(field.number, type, options.singleValued(), metadata));
+        final long[] bytesAfter = outputPointers(outputs);
+        final long[] outputBytesWritten = {
+            bytesAfter[0] - bytesBefore[0],
+            bytesAfter[1] - bytesBefore[1],
+            bytesAfter[2] - bytesBefore[2],
+            bytesAfter[3] - bytesBefore[3] };
         if (logger.isDebugEnabled()) {
             final boolean dictionary = metadata instanceof StringColumnMetadata.Dictionary;
             final StringColumnMetadata.Dictionary dictionaryMetadata = dictionary ? (StringColumnMetadata.Dictionary) metadata : null;
             logger.debug(
                 "string column written segment [{}] field [{}] path [{}] layout [{}] values [{}] dictionaryTerms [{}] escapes [{}] "
-                    + "summary [{}] bestCoverageShare [{}] surveyPassNanos [{}] writeNanos [{}]",
+                    + "summary [{}] bestCoverageShare [{}] surveyPassNanos [{}] writeNanos [{}] bytes [data={}, addressing={}, "
+                    + "lengths={}, navigation={}] summaryBytes [{}] diagnostics [{}]",
                 segmentName,
                 field.name,
                 path,
@@ -839,7 +856,13 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
                 metadata.hasSummary(),
                 metadata.hasSummary() ? metadata.summary().bestCoverage().share() : -1.0,
                 surveyPassNanos,
-                System.nanoTime() - writeStarted
+                System.nanoTime() - writeStarted,
+                outputBytesWritten[0],
+                outputBytesWritten[1],
+                outputBytesWritten[2],
+                outputBytesWritten[3],
+                StringColumnWriter.takeSummaryBytes(),
+                survey != null && survey.terms() != null ? survey.terms().diagnostics() : null
             );
         }
     }
