@@ -52,12 +52,15 @@ import java.util.TreeMap;
 public final class ColumnarIndexInspector {
 
     private static final int TOP_TERMS = 16;
+    private static final long DICTIONARY_BUDGET_BYTES = 512 * 1024;
+    private static final double MIN_COVERAGE = 0.9;
     private static final int MAX_DISTINCT = 2_000_000;
 
     private static final String SEGMENT_HEADER = "segment,max_doc,live_docs,codec,compound,scope,extension,files,bytes\n";
     private static final String FIELD_HEADER = "segment,field,dv_format,layout,values,docs_with_field,value_bytes,dictionary_terms,"
         + "escapes,has_summary,summary_values,summary_terms,summary_term_bytes,best_coverage_share,scanned_values,null_slots,runs,"
-        + "ascending_steps,descending_steps,distinct,distinct_capped,top1_share,top16_share,singleton_share,mean_bytes\n";
+        + "ascending_steps,descending_steps,distinct,distinct_capped,top1_share,top16_share,singleton_share,mean_bytes,"
+        + "exact_best_coverage_share,exact_term_bytes_for_min_coverage\n";
 
     private ColumnarIndexInspector() {}
 
@@ -165,7 +168,7 @@ public final class ColumnarIndexInspector {
             scan((ColumnarStringBinaryDocValues) segment.getBinaryDocValues(info.name), row);
         } else {
             row.add("");
-            while (row.size() < 25) {
+            while (row.size() < 27) {
                 row.add("");
             }
         }
@@ -218,6 +221,27 @@ public final class ColumnarIndexInspector {
                 }
             }
         }
+        final List<Map.Entry<BytesRef, long[]>> byCount = new ArrayList<>(counts.entrySet());
+        byCount.sort((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]));
+        long coveredInBudget = 0;
+        long budgetBytes = 0;
+        long coveredForBar = 0;
+        long barBytes = 0;
+        long barBytesNeeded = -1;
+        for (Map.Entry<BytesRef, long[]> entry : byCount) {
+            final long cost = Math.max(1, entry.getKey().length);
+            if (budgetBytes + cost <= DICTIONARY_BUDGET_BYTES) {
+                budgetBytes += cost;
+                coveredInBudget += entry.getValue()[0];
+            }
+            if (barBytesNeeded < 0) {
+                barBytes += cost;
+                coveredForBar += entry.getValue()[0];
+                if (values > 0 && (double) coveredForBar / values >= MIN_COVERAGE) {
+                    barBytesNeeded = barBytes;
+                }
+            }
+        }
         final long[] sorted = counts.values().stream().mapToLong(count -> count[0]).sorted().toArray();
         long head = 0;
         for (int i = 0; i < Math.min(TOP_TERMS, sorted.length); i++) {
@@ -240,5 +264,7 @@ public final class ColumnarIndexInspector {
         row.add(values == 0 ? "" : Double.toString((double) head / values));
         row.add(values == 0 ? "" : Double.toString((double) singletons / values));
         row.add(values == 0 ? "" : Double.toString((double) bytes / values));
+        row.add(values == 0 ? "" : Double.toString((double) coveredInBudget / values));
+        row.add(values == 0 ? "" : Long.toString(barBytesNeeded));
     }
 }
