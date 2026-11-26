@@ -848,7 +848,8 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
             logger.debug(
                 "string column written location [{}] segment [{}] field [{}] path [{}] layout [{}] values [{}] dictionaryTerms [{}] escapes [{}] "
                     + "summary [{}] bestCoverageShare [{}] surveyPassNanos [{}] writeNanos [{}] bytes [data={}, addressing={}, "
-                    + "lengths={}, navigation={}] summaryBytes [{}] diagnostics [{}]",
+                    + "lengths={}, navigation={}] summaryBytes [{}] ordinals [codec={}, blockSize={}, dictionaryBytes={}] "
+                    + "diagnostics [{}]",
                 location,
                 segmentName,
                 field.name,
@@ -866,6 +867,9 @@ final class ColumNARDocValuesConsumer extends DocValuesConsumer {
                 outputBytesWritten[2],
                 outputBytesWritten[3],
                 StringColumnWriter.takeSummaryBytes(),
+                dictionary ? dictionaryMetadata.ordinals().blockBytesCodecId() : -1,
+                dictionary ? dictionaryMetadata.ordinals().blockSize() : -1,
+                dictionary ? dictionaryMetadata.ordinals().valuesOffset() - bytesBefore[0] : -1,
                 survey != null && survey.terms() != null ? survey.terms().diagnostics() : null
             );
         }
